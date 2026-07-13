@@ -7,7 +7,7 @@ Ein Web-Panel für **Sonarr, Radarr, SABnzbd, Plex und Prowlarr** – Dashboard,
 Eine Zeile, installiert Node.js falls nötig, richtet alles als Dienst ein:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/DEINUSER/nebula-panel/main/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/zerqpain-oss/nebula-panel/main/install.sh | sudo bash
 ```
 
 Danach `http://<server-ip>:8484` öffnen, Passwort festlegen, Dienste unter Einstellungen eintragen. **Update:** denselben Befehl einfach erneut ausführen (die eigene `config.json` bleibt erhalten). **Entfernen:** `sudo bash install.sh --uninstall`.

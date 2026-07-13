@@ -3,13 +3,13 @@ set -euo pipefail
 
 # ============ Nebula Panel – Installer ============
 # Installation:
-#   curl -fsSL https://raw.githubusercontent.com/DEINUSER/nebula-panel/main/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/zerqpain-oss/nebula-panel/main/install.sh | sudo bash
 # Update:
 #   gleicher Befehl erneut ausführen (config.json bleibt erhalten)
 # Entfernen:
 #   sudo bash install.sh --uninstall
 
-REPO="DEINUSER/nebula-panel"   # <-- VOR dem Hochladen anpassen (GitHub-User/Repo)!
+REPO="zerqpain-oss/nebula-panel"
 BRANCH="main"
 DIR="/opt/nebula"
 SVC="nebula"
