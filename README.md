@@ -2,6 +2,14 @@
 
 Ein Web-Panel für **Sonarr, Radarr, SABnzbd, Plex und Prowlarr** – Dashboard, Verwaltung und Einstellungen in einer Oberfläche.
 
+## Screenshots
+
+![Dashboard](docs/dashboard.png)
+
+| Bibliothek | Downloads |
+|---|---|
+| ![Bibliothek](docs/library.png) | ![Downloads](docs/downloads.png) |
+
 ## Schnellinstallation (Debian/Ubuntu)
 
 Eine Zeile, installiert Node.js falls nötig, richtet alles als Dienst ein:
