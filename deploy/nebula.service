@@ -1,0 +1,30 @@
+# Nebula Panel – systemd-Dienst
+# Ablegen als: /etc/systemd/system/nebula.service
+# Starten:     sudo systemctl daemon-reload && sudo systemctl enable --now nebula
+
+[Unit]
+Description=Nebula Media Control Panel
+After=network.target
+
+[Service]
+Type=simple
+# ANPASSEN, falls dein Ordner woanders liegt oder ein anderer Benutzer laufen soll
+WorkingDirectory=/opt/nebula
+ExecStart=/usr/bin/node /opt/nebula/server.js
+User=www-data
+Group=www-data
+
+# Hinter nginx: nur lokal lauschen, damit Port 8484 nicht offen ist
+Environment=HOST=127.0.0.1
+Environment=PORT=8484
+
+Restart=always
+RestartSec=5
+
+# Härtung (optional, kann bei Problemen entfernt werden)
+NoNewPrivileges=true
+ProtectSystem=full
+ReadWritePaths=/opt/nebula
+
+[Install]
+WantedBy=multi-user.target
