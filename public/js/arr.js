@@ -7,8 +7,8 @@ function ArrModule(svc) {
   const P = '/api/v3';
   const ITEMS = isS ? '/series' : '/movie';
   const T = isS
-    ? { one: 'Serie', many: 'Serien', searchCmd: 'SeriesSearch', missingCmd: 'MissingEpisodeSearch', refreshCmd: 'RefreshSeries', idKey: 'seriesId' }
-    : { one: 'Film', many: 'Filme', searchCmd: 'MoviesSearch', missingCmd: 'MissingMoviesSearch', refreshCmd: 'RefreshMovie', idKey: 'movieId' };
+    ? { one: t('Serie'), many: t('Serien'), searchCmd: 'SeriesSearch', missingCmd: 'MissingEpisodeSearch', refreshCmd: 'RefreshSeries' }
+    : { one: t('Film'), many: t('Filme'), searchCmd: 'MoviesSearch', missingCmd: 'MissingMoviesSearch', refreshCmd: 'RefreshMovie' };
 
   const st = { tab: 'lib', items: [], profiles: null, roots: null, sub: 'profiles', libFilter: '', libSort: 'title' };
 
@@ -36,11 +36,11 @@ function ArrModule(svc) {
     enableMediaInfo: 'MediaInfo aktivieren'
   };
   const HIST_EVENTS = {
-    grabbed: ['Geholt', 'b-acc'], downloadFolderImported: ['Importiert', 'b-ok'],
-    downloadFailed: ['Fehlgeschlagen', 'b-err'], episodeFileDeleted: ['Datei gelöscht', 'b-warn'],
-    movieFileDeleted: ['Datei gelöscht', 'b-warn'], episodeFileRenamed: ['Umbenannt', 'b-mut'],
-    movieFileRenamed: ['Umbenannt', 'b-mut'], downloadIgnored: ['Ignoriert', 'b-mut'],
-    seriesFolderImported: ['Ordner importiert', 'b-ok'], movieFolderImported: ['Ordner importiert', 'b-ok']
+    grabbed: [t('Geholt'), 'b-acc'], downloadFolderImported: [t('Importiert'), 'b-ok'],
+    downloadFailed: [t('Fehlgeschlagen'), 'b-err'], episodeFileDeleted: [t('Datei gelöscht'), 'b-warn'],
+    movieFileDeleted: [t('Datei gelöscht'), 'b-warn'], episodeFileRenamed: [t('Umbenannt'), 'b-mut'],
+    movieFileRenamed: [t('Umbenannt'), 'b-mut'], downloadIgnored: [t('Ignoriert'), 'b-mut'],
+    seriesFolderImported: [t('Ordner importiert'), 'b-ok'], movieFolderImported: [t('Ordner importiert'), 'b-ok']
   };
 
   /* ---------- Helfer ---------- */
@@ -69,18 +69,18 @@ function ArrModule(svc) {
   }
   async function cmd(name, extra, msg) {
     await API.post(svc, P + '/command', Object.assign({ name }, extra || {}));
-    App.toast(msg || 'Auftrag gestartet', 'ok');
+    App.toast(msg || t('Suche gestartet'), 'ok');
   }
 
   /* ---------- Einstieg ---------- */
   async function render(el) {
     if (!App.svcGuard(svc, el)) return;
     el.innerHTML = `<div class="tabs" id="arrTabs"></div><div id="arrBody"></div>`;
-    const tabs = [['lib', 'Bibliothek'], ['add', 'Hinzufügen'], ['cal', 'Kalender'], ['act', 'Aktivität'], ['wanted', 'Fehlend'], ['cfg', 'Einstellungen']];
+    const tabs = [['lib', t('Bibliothek')], ['add', t('Hinzufügen')], ['cal', t('Kalender')], ['act', t('Aktivität')], ['wanted', t('Fehlend')], ['cfg', t('Einstellungen')]];
     const tabsEl = el.querySelector('#arrTabs');
-    tabsEl.innerHTML = tabs.map(t => `<span class="tab ${st.tab === t[0] ? 'active' : ''}" data-t="${t[0]}">${t[1]}</span>`).join('');
-    on(tabsEl, 'click', '.tab', (e, t) => {
-      st.tab = t.dataset.t;
+    tabsEl.innerHTML = tabs.map(tb => `<span class="tab ${st.tab === tb[0] ? 'active' : ''}" data-t="${tb[0]}">${tb[1]}</span>`).join('');
+    on(tabsEl, 'click', '.tab', (e, el2) => {
+      st.tab = el2.dataset.t;
       tabsEl.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.t === st.tab));
       showTab();
     });
@@ -108,11 +108,11 @@ function ArrModule(svc) {
     st.items = items;
     body.innerHTML = `
       <div class="toolrow">
-        <input class="inp grow" id="libQ" placeholder="Bibliothek filtern…" value="${esc(st.libFilter)}">
+        <input class="inp grow" id="libQ" placeholder="${t('Bibliothek filtern…')}" value="${esc(st.libFilter)}">
         <select class="sel" id="libSort">
-          <option value="title">Nach Titel</option>
-          <option value="added">Zuletzt hinzugefügt</option>
-          <option value="size">Nach Größe</option>
+          <option value="title">${t('Nach Titel')}</option>
+          <option value="added">${t('Zuletzt hinzugefügt')}</option>
+          <option value="size">${t('Nach Größe')}</option>
         </select>
         <span class="chip">${icon(M.icon)}<b>${fmtNum(items.length)}</b>&nbsp;${T.many}</span>
       </div>
@@ -130,35 +130,35 @@ function ArrModule(svc) {
       grid.innerHTML = arr.map(item => {
         const sub = isS
           ? `${item.statistics ? item.statistics.episodeFileCount + '/' + item.statistics.episodeCount + ' Ep.' : ''}`
-          : (item.hasFile ? fmtBytes(sizeOf(item)) : 'Fehlt');
+          : (item.hasFile ? fmtBytes(sizeOf(item)) : t('Fehlt'));
         return `<div class="poster" data-id="${item.id}" title="${esc(item.title)}">
           <div class="p-fall">${esc(item.title)}</div>
           ${posterImg(item)}
-          <div class="p-tl">${!isS && !item.hasFile && item.monitored ? '<span class="badge b-warn">Fehlt</span>' : ''}</div>
-          <div class="p-tr"><span class="badge ${item.monitored ? 'b-acc' : 'b-mut'}" data-mon="${item.id}" title="Überwachung umschalten" style="cursor:pointer">${icon('bookmark')}</span></div>
+          <div class="p-tl">${!isS && !item.hasFile && item.monitored ? `<span class="badge b-warn">${t('Fehlt')}</span>` : ''}</div>
+          <div class="p-tr"><span class="badge ${item.monitored ? 'b-acc' : 'b-mut'}" data-mon="${item.id}" title="${t('Überwachung umschalten')}" style="cursor:pointer">${icon('bookmark')}</span></div>
           <div class="p-grad"></div>
           <div class="p-info"><b>${esc(item.title)}</b><span>${item.year || ''}${sub ? ' · ' + esc(sub) : ''}</span></div>
         </div>`;
-      }).join('') || emptyBox('inbox', 'Keine Treffer');
+      }).join('') || emptyBox('inbox', t('Keine Treffer'));
     };
     draw();
 
     body.querySelector('#libQ').addEventListener('input', e => { st.libFilter = e.target.value; draw(); });
     body.querySelector('#libSort').addEventListener('change', e => { st.libSort = e.target.value; draw(); });
-    on(grid, 'click', '[data-mon]', async (e, t) => {
+    on(grid, 'click', '[data-mon]', async (e, el2) => {
       e.stopPropagation();
-      const item = st.items.find(i => i.id === +t.dataset.mon);
+      const item = st.items.find(i => i.id === +el2.dataset.mon);
       if (!item) return;
       item.monitored = !item.monitored;
       try {
         await API.put(svc, P + ITEMS + '/' + item.id, item);
-        App.toast(`${item.title}: ${item.monitored ? 'überwacht' : 'nicht mehr überwacht'}`, 'ok');
+        App.toast(`${item.title}: ${item.monitored ? t('überwacht') : t('nicht mehr überwacht')}`, 'ok');
         draw();
       } catch (ex) { item.monitored = !item.monitored; App.toast(ex.message, 'err'); }
     });
-    on(grid, 'click', '.poster', (e, t) => {
+    on(grid, 'click', '.poster', (e, el2) => {
       if (e.target.closest('[data-mon]')) return;
-      const item = st.items.find(i => i.id === +t.dataset.id);
+      const item = st.items.find(i => i.id === +el2.dataset.id);
       if (item) detailModal(item);
     });
   }
@@ -167,33 +167,33 @@ function ArrModule(svc) {
   function detailModal(item) {
     const stats = item.statistics || {};
     const facts = [
-      ['Status', item.status], ['Jahr', item.year],
-      [isS ? 'Sender' : 'Studio', isS ? item.network : item.studio],
-      ['Qualitätsprofil', profileName(item.qualityProfileId)],
-      ['Pfad', item.path], ['Größe', fmtBytes(sizeOf(item))],
-      ['Genres', (item.genres || []).slice(0, 4).join(', ')]
+      [t('Status'), item.status], [t('Jahr'), item.year],
+      [isS ? t('Sender') : t('Studio'), isS ? item.network : item.studio],
+      [t('Qualitätsprofil'), profileName(item.qualityProfileId)],
+      [t('Pfad'), item.path], [t('Größe'), fmtBytes(sizeOf(item))],
+      [t('Genres'), (item.genres || []).slice(0, 4).join(', ')]
     ].filter(f => f[1] !== undefined && f[1] !== null && f[1] !== '');
 
     let seasonsHtml = '';
     if (isS && Array.isArray(item.seasons)) {
-      seasonsHtml = `<div class="sec-title">Staffeln</div><table class="tbl"><tbody>` +
+      seasonsHtml = `<div class="sec-title">${t('Staffeln')}</div><table class="tbl"><tbody>` +
         item.seasons.slice().reverse().map(sn => {
           const ss = sn.statistics || {};
           return `<tr>
-            <td class="td-main">${sn.seasonNumber === 0 ? 'Specials' : 'Staffel ' + sn.seasonNumber}</td>
-            <td class="td-sub">${ss.episodeFileCount != null ? ss.episodeFileCount + ' / ' + ss.episodeCount + ' Episoden' : ''}</td>
+            <td class="td-main">${sn.seasonNumber === 0 ? t('Specials') : tf('Staffel {0}', sn.seasonNumber)}</td>
+            <td class="td-sub">${ss.episodeFileCount != null ? tf('{0} / {1} Episoden', ss.episodeFileCount, ss.episodeCount) : ''}</td>
             <td class="r" style="white-space:nowrap">
-              <label class="switch" title="Überwachen"><input type="checkbox" data-season="${sn.seasonNumber}" ${sn.monitored ? 'checked' : ''}><i></i></label>
-              <button class="btn btn-ic btn-g" data-sseek="${sn.seasonNumber}" title="Staffel suchen">${icon('search')}</button>
+              <label class="switch" title="${t('Überwacht')}"><input type="checkbox" data-season="${sn.seasonNumber}" ${sn.monitored ? 'checked' : ''}><i></i></label>
+              <button class="btn btn-ic btn-g" data-sseek="${sn.seasonNumber}" title="${t('Staffel suchen')}">${icon('search')}</button>
             </td></tr>`;
         }).join('') + '</tbody></table>';
     }
     if (!isS && item.movieFile) {
       const mf = item.movieFile;
-      seasonsHtml = `<div class="sec-title">Datei</div>
-        <div class="kv"><span>Qualität</span><b>${esc(mf.quality && mf.quality.quality && mf.quality.quality.name || '?')}</b></div>
-        <div class="kv"><span>Größe</span><b>${fmtBytes(mf.size)}</b></div>
-        <div class="kv"><span>Pfad</span><span class="mono wrapline" style="color:var(--txt)">${esc(mf.relativePath || '')}</span></div>`;
+      seasonsHtml = `<div class="sec-title">${t('Datei')}</div>
+        <div class="kv"><span>${t('Qualität')}</span><b>${esc(mf.quality && mf.quality.quality && mf.quality.quality.name || '?')}</b></div>
+        <div class="kv"><span>${t('Größe')}</span><b>${fmtBytes(mf.size)}</b></div>
+        <div class="kv"><span>${t('Pfad')}</span><span class="mono wrapline" style="color:var(--txt)">${esc(mf.relativePath || '')}</span></div>`;
     }
 
     const body = h(`<div>
@@ -205,56 +205,56 @@ function ArrModule(svc) {
         </div>
       </div>${seasonsHtml}</div>`);
 
-    const bSearch = h(`<button class="btn btn-p">${icon('search')} Suche starten</button>`);
-    const bRefresh = h(`<button class="btn">${icon('refresh')} Aktualisieren</button>`);
-    const bEdit = h(`<button class="btn">${icon('edit')} Bearbeiten</button>`);
-    const bDel = h(`<button class="btn btn-d">${icon('trash')} Löschen</button>`);
+    const bSearch = h(`<button class="btn btn-p">${icon('search')} ${t('Suche starten')}</button>`);
+    const bRefresh = h(`<button class="btn">${icon('refresh')} ${t('Aktualisieren')}</button>`);
+    const bEdit = h(`<button class="btn">${icon('edit')} ${t('Bearbeiten')}</button>`);
+    const bDel = h(`<button class="btn btn-d">${icon('trash')} ${t('Löschen')}</button>`);
     const m = App.modal({ title: item.title, body, foot: [bDel, bEdit, bRefresh, bSearch], wide: true });
 
-    bSearch.addEventListener('click', () => cmd(T.searchCmd, isS ? { seriesId: item.id } : { movieIds: [item.id] }, 'Suche gestartet'));
-    bRefresh.addEventListener('click', () => cmd(T.refreshCmd, isS ? { seriesId: item.id } : { movieIds: [item.id] }, 'Aktualisierung gestartet'));
+    bSearch.addEventListener('click', () => cmd(T.searchCmd, isS ? { seriesId: item.id } : { movieIds: [item.id] }, t('Suche gestartet')));
+    bRefresh.addEventListener('click', () => cmd(T.refreshCmd, isS ? { seriesId: item.id } : { movieIds: [item.id] }, t('Aktualisierung gestartet')));
     bEdit.addEventListener('click', () => { m.close(); editModal(item); });
     bDel.addEventListener('click', async () => {
       const r = await App.confirm({
-        title: T.one + ' löschen', msg: `„${item.title}" wirklich aus ${M.name} entfernen?`,
-        okLabel: 'Löschen', danger: true,
-        checks: [{ id: 'files', label: 'Dateien von der Festplatte löschen', checked: false }]
+        title: tf('{0} löschen', T.one), msg: tf('„{0}" wirklich aus {1} entfernen?', item.title, M.name),
+        okLabel: t('Löschen'), danger: true,
+        checks: [{ id: 'files', label: t('Dateien von der Festplatte löschen'), checked: false }]
       });
       if (!r) return;
       try {
         await API.del(svc, P + ITEMS + '/' + item.id + '?deleteFiles=' + !!r.files + '&addImportExclusion=false');
-        App.toast(item.title + ' gelöscht', 'ok');
+        App.toast(tf('{0} gelöscht', item.title), 'ok');
         m.close();
         if (st.tab === 'lib') showTab();
       } catch (ex) { App.toast(ex.message, 'err'); }
     });
 
-    on(body, 'change', '[data-season]', async (e, t) => {
-      const sn = item.seasons.find(x => x.seasonNumber === +t.dataset.season);
-      sn.monitored = t.checked;
-      try { await API.put(svc, P + ITEMS + '/' + item.id, item); App.toast('Gespeichert', 'ok'); }
+    on(body, 'change', '[data-season]', async (e, el2) => {
+      const sn = item.seasons.find(x => x.seasonNumber === +el2.dataset.season);
+      sn.monitored = el2.checked;
+      try { await API.put(svc, P + ITEMS + '/' + item.id, item); App.toast(t('Gespeichert'), 'ok'); }
       catch (ex) { App.toast(ex.message, 'err'); }
     });
-    on(body, 'click', '[data-sseek]', (e, t) =>
-      cmd('SeasonSearch', { seriesId: item.id, seasonNumber: +t.dataset.sseek }, 'Staffel-Suche gestartet'));
+    on(body, 'click', '[data-sseek]', (e, el2) =>
+      cmd('SeasonSearch', { seriesId: item.id, seasonNumber: +el2.dataset.sseek }, t('Staffel-Suche gestartet')));
   }
 
   /* ---------- Bearbeiten ---------- */
   async function editModal(item) {
     await ensureMeta();
     const body = h(`<div>
-      <div class="frow"><label class="lbl">Überwacht</label>
+      <div class="frow"><label class="lbl">${t('Überwacht')}</label>
         <label class="switch"><input type="checkbox" id="eMon" ${item.monitored ? 'checked' : ''}><i></i></label></div>
-      <div class="frow"><label class="lbl">Qualitätsprofil</label>
+      <div class="frow"><label class="lbl">${t('Qualitätsprofil')}</label>
         <select class="sel" id="eProf">${st.profiles.map(p => `<option value="${p.id}" ${p.id === item.qualityProfileId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
-      ${!isS ? `<div class="frow"><label class="lbl">Mindest-Verfügbarkeit</label>
+      ${!isS ? `<div class="frow"><label class="lbl">${t('Mindest-Verfügbarkeit')}</label>
         <select class="sel" id="eAvail">${['announced', 'inCinemas', 'released'].map(a => `<option value="${a}" ${item.minimumAvailability === a ? 'selected' : ''}>${a}</option>`).join('')}</select></div>` : ''}
-      ${isS ? `<div class="frow"><label class="lbl">Staffel-Ordner</label>
+      ${isS ? `<div class="frow"><label class="lbl">${t('Staffel-Ordner')}</label>
         <label class="switch"><input type="checkbox" id="eSf" ${item.seasonFolder ? 'checked' : ''}><i></i></label></div>` : ''}
-      <div class="frow"><label class="lbl">Pfad</label><input class="inp" id="ePath" value="${esc(item.path || '')}"></div>
+      <div class="frow"><label class="lbl">${t('Pfad')}</label><input class="inp" id="ePath" value="${esc(item.path || '')}"></div>
     </div>`);
-    const bSave = h(`<button class="btn btn-p">Speichern</button>`);
-    const m = App.modal({ title: item.title + ' bearbeiten', body, foot: [bSave] });
+    const bSave = h(`<button class="btn btn-p">${t('Speichern')}</button>`);
+    const m = App.modal({ title: tf('{0} bearbeiten', item.title), body, foot: [bSave] });
     bSave.addEventListener('click', async () => {
       item.monitored = body.querySelector('#eMon').checked;
       item.qualityProfileId = +body.querySelector('#eProf').value;
@@ -263,7 +263,7 @@ function ArrModule(svc) {
       if (isS) item.seasonFolder = body.querySelector('#eSf').checked;
       try {
         await API.put(svc, P + ITEMS + '/' + item.id + '?moveFiles=false', item);
-        App.toast('Gespeichert', 'ok'); m.close();
+        App.toast(t('Gespeichert'), 'ok'); m.close();
         if (st.tab === 'lib') showTab();
       } catch (ex) { App.toast(ex.message, 'err'); }
     });
@@ -273,8 +273,8 @@ function ArrModule(svc) {
   function renderAdd(body) {
     body.innerHTML = `
       <div class="toolrow">
-        <input class="inp grow search-lg" id="addQ" placeholder="${isS ? 'Serie' : 'Film'} suchen – Titel eingeben und Enter drücken…">
-        <button class="btn btn-p" id="addGo">${icon('search')} Suchen</button>
+        <input class="inp grow search-lg" id="addQ" placeholder="${isS ? t('Serie suchen – Titel eingeben und Enter drücken…') : t('Film suchen – Titel eingeben und Enter drücken…')}">
+        <button class="btn btn-p" id="addGo">${icon('search')} ${t('Suchen')}</button>
       </div>
       <div id="addRes"></div>`;
     const q = body.querySelector('#addQ');
@@ -290,13 +290,13 @@ function ArrModule(svc) {
           return `<div class="poster" data-i="${i}" title="${esc(r.title)}">
             <div class="p-fall">${esc(r.title)}</div>
             ${src ? `<img loading="lazy" src="${esc(src)}" onerror="this.remove()">` : ''}
-            <div class="p-tl">${exists ? '<span class="badge b-ok">Vorhanden</span>' : ''}</div>
+            <div class="p-tl">${exists ? `<span class="badge b-ok">${t('Vorhanden')}</span>` : ''}</div>
             <div class="p-grad"></div>
             <div class="p-info"><b>${esc(r.title)}</b><span>${r.year || ''}</span></div>
           </div>`;
-        }).join('') || emptyBox('search', 'Keine Ergebnisse')}</div>`;
-        on(res, 'click', '.poster', (e, t) => {
-          const r = list[+t.dataset.i];
+        }).join('') || emptyBox('search', t('Keine Ergebnisse'))}</div>`;
+        on(res, 'click', '.poster', (e, el2) => {
+          const r = list[+el2.dataset.i];
           if (r.id) { detailModal(r); return; }
           addModal(r);
         });
@@ -309,24 +309,24 @@ function ArrModule(svc) {
 
   async function addModal(r) {
     await ensureMeta();
-    if (!st.roots.length) { App.toast('Kein Root-Ordner konfiguriert – zuerst unter Einstellungen anlegen', 'err'); return; }
-    const monitorOpts = [['all', 'Alle Episoden'], ['future', 'Zukünftige'], ['missing', 'Fehlende'], ['existing', 'Vorhandene'], ['firstSeason', 'Erste Staffel'], ['latestSeason', 'Neueste Staffel'], ['none', 'Keine']];
+    if (!st.roots.length) { App.toast(t('Kein Root-Ordner konfiguriert – zuerst unter Einstellungen anlegen'), 'err'); return; }
+    const monitorOpts = [['all', t('Alle Episoden')], ['future', t('Zukünftige')], ['missing', t('Fehlende')], ['existing', t('Vorhandene')], ['firstSeason', t('Erste Staffel')], ['latestSeason', t('Neueste Staffel')], ['none', t('Keine')]];
     const body = h(`<div>
-      <div class="frow"><label class="lbl">Root-Ordner</label>
-        <select class="sel" id="aRoot">${st.roots.map(x => `<option value="${esc(x.path)}">${esc(x.path)} (${fmtBytes(x.freeSpace)} frei)</option>`).join('')}</select></div>
-      <div class="frow"><label class="lbl">Qualitätsprofil</label>
+      <div class="frow"><label class="lbl">${t('Root-Ordner')}</label>
+        <select class="sel" id="aRoot">${st.roots.map(x => `<option value="${esc(x.path)}">${esc(x.path)} (${tf('{0} frei', fmtBytes(x.freeSpace))})</option>`).join('')}</select></div>
+      <div class="frow"><label class="lbl">${t('Qualitätsprofil')}</label>
         <select class="sel" id="aProf">${st.profiles.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
-      ${isS ? `<div class="frow"><label class="lbl">Überwachen</label>
+      ${isS ? `<div class="frow"><label class="lbl">${t('Überwacht')}</label>
         <select class="sel" id="aMon">${monitorOpts.map(o => `<option value="${o[0]}">${o[1]}</option>`).join('')}</select></div>
-      <div class="frow"><label class="lbl">Staffel-Ordner</label>
+      <div class="frow"><label class="lbl">${t('Staffel-Ordner')}</label>
         <label class="switch"><input type="checkbox" id="aSf" checked><i></i></label></div>`
-      : `<div class="frow"><label class="lbl">Mindest-Verfügbarkeit</label>
-        <select class="sel" id="aAvail"><option value="announced">Angekündigt</option><option value="inCinemas">Im Kino</option><option value="released" selected>Veröffentlicht</option></select></div>`}
-      <div class="frow"><label class="lbl">Nach dem Hinzufügen suchen</label>
+      : `<div class="frow"><label class="lbl">${t('Mindest-Verfügbarkeit')}</label>
+        <select class="sel" id="aAvail"><option value="announced">${t('Angekündigt')}</option><option value="inCinemas">${t('Im Kino')}</option><option value="released" selected>${t('Veröffentlicht')}</option></select></div>`}
+      <div class="frow"><label class="lbl">${t('Nach dem Hinzufügen suchen')}</label>
         <label class="switch"><input type="checkbox" id="aSearch" checked><i></i></label></div>
     </div>`);
-    const bAdd = h(`<button class="btn btn-p">${icon('plus')} Hinzufügen</button>`);
-    const m = App.modal({ title: `${r.title} (${r.year || '?'}) hinzufügen`, body, foot: [bAdd] });
+    const bAdd = h(`<button class="btn btn-p">${icon('plus')} ${t('Hinzufügen')}</button>`);
+    const m = App.modal({ title: tf('{0} ({1}) hinzufügen', r.title, r.year || '?'), body, foot: [bAdd] });
     bAdd.addEventListener('click', async () => {
       bAdd.disabled = true;
       const payload = Object.assign({}, r, {
@@ -346,7 +346,7 @@ function ArrModule(svc) {
       }
       try {
         await API.post(svc, P + ITEMS, payload);
-        App.toast(r.title + ' hinzugefügt', 'ok');
+        App.toast(tf('{0} hinzugefügt', r.title), 'ok');
         m.close();
       } catch (ex) { App.toast(ex.message, 'err'); bAdd.disabled = false; }
     });
@@ -369,7 +369,7 @@ function ArrModule(svc) {
       ms.forEach(mv => {
         [['Kino', mv.inCinemas], ['Digital', mv.digitalRelease], ['Disc', mv.physicalRelease]]
           .filter(x => x[1] && new Date(x[1]) >= start && new Date(x[1]) < end)
-          .forEach(d => items.push({ date: d[1], has: mv.hasFile, label: `${mv.title} (${mv.year})`, sub: d[0] + '-Release' }));
+          .forEach(d => items.push({ date: d[1], has: mv.hasFile, label: `${mv.title} (${mv.year})`, sub: tf('{0}-Release', t(d[0])) }));
       });
     }
     items.sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -378,11 +378,11 @@ function ArrModule(svc) {
       const dl = dayLabel(it.date);
       if (dl !== lastDay) { html += `<div class="day-h">${icon('calendar')} ${dl}</div>`; lastDay = dl; }
       html += `<div class="list-item"><i class="dot" style="background:${M.color}"></i>
-        <div class="li-main"><b>${esc(it.label)}</b><span>${esc(it.sub)} · ${timeHM(it.date)} Uhr</span></div>
-        ${it.has ? '<span class="badge b-ok">Vorhanden</span>' : '<span class="badge b-mut">Ausstehend</span>'}</div>`;
+        <div class="li-main"><b>${esc(it.label)}</b><span>${esc(it.sub)} · ${tf('{0} Uhr', timeHM(it.date))}</span></div>
+        ${it.has ? `<span class="badge b-ok">${t('Vorhanden')}</span>` : `<span class="badge b-mut">${t('Ausstehend')}</span>`}</div>`;
     });
-    body.innerHTML = `<div class="card"><div class="card-h"><h3>Kalender</h3><span class="sub">gestern bis in 14 Tagen</span></div>
-      <div class="card-b">${html || emptyBox('calendar', 'Keine Einträge im Zeitraum')}</div></div>`;
+    body.innerHTML = `<div class="card"><div class="card-h"><h3>${t('Kalender')}</h3><span class="sub">${t('gestern bis in 14 Tagen')}</span></div>
+      <div class="card-b">${html || emptyBox('calendar', t('Keine Einträge im Zeitraum'))}</div></div>`;
   }
 
   /* ---------- Aktivität (Queue + Historie) ---------- */
@@ -404,35 +404,35 @@ function ArrModule(svc) {
         if (isS && r.series) title = `${r.series.title}${r.episode ? ` · S${String(r.episode.seasonNumber).padStart(2, '0')}E${String(r.episode.episodeNumber).padStart(2, '0')}` : ''}`;
         if (!isS && r.movie) title = `${r.movie.title} (${r.movie.year})`;
         const pct = r.size ? Math.max(0, Math.round((1 - r.sizeleft / r.size) * 100)) : 0;
-        const stBadge = r.trackedDownloadState === 'importPending' ? '<span class="badge b-warn">Import wartet</span>'
-          : r.status === 'downloading' ? '<span class="badge b-acc">Lädt</span>'
+        const stBadge = r.trackedDownloadState === 'importPending' ? `<span class="badge b-warn">${t('Import wartet')}</span>`
+          : r.status === 'downloading' ? `<span class="badge b-acc">${t('Lädt')}</span>`
           : `<span class="badge b-mut">${esc(r.status || '?')}</span>`;
         return `<tr>
           <td><div class="td-main wrapline">${esc(title)}</div><div class="td-sub wrapline">${esc(r.title || '')}</div></td>
           <td style="white-space:nowrap">${esc(r.quality && r.quality.quality && r.quality.quality.name || '')}</td>
           <td style="min-width:120px"><div class="prog"><i style="width:${pct}%"></i></div><div class="td-sub" style="margin-top:4px">${pct}% · ${esc(r.timeleft || '–')}</div></td>
           <td>${stBadge}</td>
-          <td class="r"><button class="btn btn-ic btn-g" data-qdel="${r.id}" title="Entfernen">${icon('trash')}</button></td>
+          <td class="r"><button class="btn btn-ic btn-g" data-qdel="${r.id}" title="${t('Entfernen')}">${icon('trash')}</button></td>
         </tr>`;
       }).join('');
-      wrap.innerHTML = `<div class="card-h"><h3>Warteschlange</h3><span class="sub">${fmtNum(q.totalRecords || 0)} Einträge</span></div>
-        <div class="card-b tight">${rows ? `<table class="tbl"><thead><tr><th>Titel</th><th>Qualität</th><th>Fortschritt</th><th>Status</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : emptyBox('inbox', 'Warteschlange ist leer')}</div>`;
-      on(wrap, 'click', '[data-qdel]', async (e, t) => {
+      wrap.innerHTML = `<div class="card-h"><h3>${t('Warteschlange')}</h3><span class="sub">${tf('{0} Einträge', fmtNum(q.totalRecords || 0))}</span></div>
+        <div class="card-b tight">${rows ? `<table class="tbl"><thead><tr><th>${t('Titel')}</th><th>${t('Qualität')}</th><th>${t('Fortschritt')}</th><th>${t('Status')}</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : emptyBox('inbox', t('Warteschlange ist leer'))}</div>`;
+      on(wrap, 'click', '[data-qdel]', async (e, el2) => {
         const r = await App.confirm({
-          title: 'Aus Warteschlange entfernen', msg: 'Download wirklich entfernen?', okLabel: 'Entfernen', danger: true,
+          title: t('Aus Warteschlange entfernen'), msg: t('Download wirklich entfernen?'), okLabel: t('Entfernen'), danger: true,
           checks: [
-            { id: 'client', label: 'Auch im Download-Client löschen', checked: true },
-            { id: 'block', label: 'Release blocklisten', checked: false }
+            { id: 'client', label: t('Auch im Download-Client löschen'), checked: true },
+            { id: 'block', label: t('Release blocklisten'), checked: false }
           ]
         });
         if (!r) return;
         try {
-          await API.del(svc, `${P}/queue/${t.dataset.qdel}?removeFromClient=${!!r.client}&blocklist=${!!r.block}`);
-          App.toast('Entfernt', 'ok'); drawQueue();
+          await API.del(svc, `${P}/queue/${el2.dataset.qdel}?removeFromClient=${!!r.client}&blocklist=${!!r.block}`);
+          App.toast(t('Entfernt'), 'ok'); drawQueue();
         } catch (ex) { App.toast(ex.message, 'err'); }
       });
     } catch (e) {
-      if (!soft) wrap.innerHTML = `<div class="card-h"><h3>Warteschlange</h3></div><div class="card-b">${errBox(e.message)}</div>`;
+      if (!soft) wrap.innerHTML = `<div class="card-h"><h3>${t('Warteschlange')}</h3></div><div class="card-b">${errBox(e.message)}</div>`;
     }
   }
 
@@ -449,9 +449,9 @@ function ArrModule(svc) {
           <span>${esc(r.quality && r.quality.quality && r.quality.quality.name || '')} · ${relTime(r.date)}</span></div>
         </div>`;
       }).join('');
-      wrap.innerHTML = `<div class="card-h"><h3>Historie</h3></div><div class="card-b" style="padding-top:6px">${rows || emptyBox('clock', 'Noch keine Historie')}</div>`;
+      wrap.innerHTML = `<div class="card-h"><h3>${t('Historie')}</h3></div><div class="card-b" style="padding-top:6px">${rows || emptyBox('clock', t('Noch keine Historie'))}</div>`;
     } catch (e) {
-      wrap.innerHTML = `<div class="card-h"><h3>Historie</h3></div><div class="card-b">${errBox(e.message)}</div>`;
+      wrap.innerHTML = `<div class="card-h"><h3>${t('Historie')}</h3></div><div class="card-b">${errBox(e.message)}</div>`;
     }
   }
 
@@ -465,34 +465,34 @@ function ArrModule(svc) {
       const label = isS
         ? `${(r.series && r.series.title) || '?'} · S${String(r.seasonNumber).padStart(2, '0')}E${String(r.episodeNumber).padStart(2, '0')} – ${r.title || ''}`
         : `${r.title} (${r.year || '?'})`;
-      const sub = isS ? (r.airDateUtc ? 'Ausgestrahlt ' + relTime(r.airDateUtc) : '') : (r.status || '');
+      const sub = isS ? (r.airDateUtc ? tf('Ausgestrahlt {0}', relTime(r.airDateUtc)) : '') : (r.status || '');
       return `<div class="list-item">
         <div class="li-main"><b class="wrapline" style="white-space:normal">${esc(label)}</b><span>${esc(sub)}</span></div>
-        <button class="btn btn-sm" data-ws="${r.id}">${icon('search')} Suchen</button>
+        <button class="btn btn-sm" data-ws="${r.id}">${icon('search')} ${t('Suchen')}</button>
       </div>`;
     }).join('');
     body.innerHTML = `<div class="card">
-      <div class="card-h"><h3>Fehlende ${T.many}</h3><span class="sub">${fmtNum(w.totalRecords || 0)} gesamt</span>
+      <div class="card-h"><h3>${tf('Fehlende {0}', T.many)}</h3><span class="sub">${tf('{0} gesamt', fmtNum(w.totalRecords || 0))}</span>
         <span class="spacer"></span>
-        <button class="btn btn-sm btn-p" id="wAll">${icon('zap')} Alle suchen</button>
+        <button class="btn btn-sm btn-p" id="wAll">${icon('zap')} ${t('Alle suchen')}</button>
       </div>
-      <div class="card-b" style="padding-top:6px">${rows || emptyBox('check', 'Nichts fehlt – alles da!')}</div></div>`;
-    on(body, 'click', '[data-ws]', (e, t) =>
-      cmd(isS ? 'EpisodeSearch' : 'MoviesSearch', isS ? { episodeIds: [+t.dataset.ws] } : { movieIds: [+t.dataset.ws] }, 'Suche gestartet'));
+      <div class="card-b" style="padding-top:6px">${rows || emptyBox('check', t('Nichts fehlt – alles da!'))}</div></div>`;
+    on(body, 'click', '[data-ws]', (e, el2) =>
+      cmd(isS ? 'EpisodeSearch' : 'MoviesSearch', isS ? { episodeIds: [+el2.dataset.ws] } : { movieIds: [+el2.dataset.ws] }, t('Suche gestartet')));
     body.querySelector('#wAll').addEventListener('click', async () => {
-      const r = await App.confirm({ title: 'Alle fehlenden suchen', msg: 'Das kann viele Indexer-Anfragen auslösen. Fortfahren?', okLabel: 'Suchen' });
-      if (r) cmd(T.missingCmd, {}, 'Suche nach allen fehlenden gestartet');
+      const r = await App.confirm({ title: t('Alle fehlenden suchen'), msg: t('Das kann viele Indexer-Anfragen auslösen. Fortfahren?'), okLabel: t('Suchen') });
+      if (r) cmd(T.missingCmd, {}, t('Suche nach allen fehlenden gestartet'));
     });
   }
 
   /* ---------- Einstellungen ---------- */
   async function renderCfg(body) {
-    const subs = [['profiles', 'Qualitätsprofile'], ['roots', 'Root-Ordner'], ['indexer', 'Indexer'], ['dlc', 'Download-Clients'], ['naming', 'Benennung'], ['media', 'Medienverwaltung']];
+    const subs = [['profiles', t('Qualitätsprofile')], ['roots', t('Root-Ordner')], ['indexer', 'Indexer'], ['dlc', t('Download-Clients')], ['naming', t('Benennung')], ['media', t('Medienverwaltung')]];
     body.innerHTML = `<div class="subtabs" id="cfgTabs">${subs.map(s =>
       `<span class="tab ${st.sub === s[0] ? 'active' : ''}" data-s="${s[0]}">${s[1]}</span>`).join('')}</div><div id="cfgBody">${spinner()}</div>`;
     const cfgBody = body.querySelector('#cfgBody');
-    on(body.querySelector('#cfgTabs'), 'click', '.tab', (e, t) => {
-      st.sub = t.dataset.s;
+    on(body.querySelector('#cfgTabs'), 'click', '.tab', (e, el2) => {
+      st.sub = el2.dataset.s;
       body.querySelectorAll('#cfgTabs .tab').forEach(x => x.classList.toggle('active', x.dataset.s === st.sub));
       drawCfg(cfgBody);
     });
@@ -506,8 +506,8 @@ function ArrModule(svc) {
       else if (st.sub === 'roots') await cfgRoots(el);
       else if (st.sub === 'indexer') await cfgProviders(el, '/indexer', 'Indexer');
       else if (st.sub === 'dlc') await cfgProviders(el, '/downloadclient', 'Download-Client');
-      else if (st.sub === 'naming') await cfgObj(el, '/config/naming', 'Benennung', NAMING_LABELS);
-      else await cfgObj(el, '/config/mediamanagement', 'Medienverwaltung', MEDIA_LABELS);
+      else if (st.sub === 'naming') await cfgObj(el, '/config/naming', t('Benennung'), NAMING_LABELS);
+      else await cfgObj(el, '/config/mediamanagement', t('Medienverwaltung'), MEDIA_LABELS);
     } catch (e) { el.innerHTML = errBox(e.message); }
   }
 
@@ -518,13 +518,13 @@ function ArrModule(svc) {
       const allowed = flat.filter(x => x.allowed).length;
       return `<div class="card"><div class="card-b">
         <div style="display:flex;align-items:center;gap:8px"><b style="font-size:15px;flex:1">${esc(p.name)}</b>
-          <button class="btn btn-sm" data-pedit="${p.id}">${icon('edit')} Bearbeiten</button></div>
-        <div class="td-sub" style="margin-top:8px">${allowed} von ${flat.length} Qualitäten erlaubt</div>
-        <div class="td-sub">Upgrade bis: <b style="color:var(--txt)">${esc(cutoffName(p))}</b> ${p.upgradeAllowed ? '' : '· Upgrades aus'}</div>
+          <button class="btn btn-sm" data-pedit="${p.id}">${icon('edit')} ${t('Bearbeiten')}</button></div>
+        <div class="td-sub" style="margin-top:8px">${tf('{0} von {1} Qualitäten erlaubt', allowed, flat.length)}</div>
+        <div class="td-sub">${tf('Upgrade bis: {0}', `<b style="color:var(--txt)">${esc(cutoffName(p))}</b>`)} ${p.upgradeAllowed ? '' : '· ' + t('Upgrades aus')}</div>
       </div></div>`;
     }).join('')}</div>`;
-    on(el, 'click', '[data-pedit]', (e, t) => {
-      const p = st.profiles.find(x => x.id === +t.dataset.pedit);
+    on(el, 'click', '[data-pedit]', (e, el2) => {
+      const p = st.profiles.find(x => x.id === +el2.dataset.pedit);
       if (p) profileModal(structuredClone(p));
     });
   }
@@ -544,11 +544,11 @@ function ArrModule(svc) {
   function profileModal(p) {
     const flat = flattenQualities(p);
     const body = h(`<div>
-      <div class="frow"><label class="lbl">Name</label><input class="inp" id="pName" value="${esc(p.name)}"></div>
-      <div class="frow"><label class="lbl">Upgrades erlaubt</label>
+      <div class="frow"><label class="lbl">${t('Name')}</label><input class="inp" id="pName" value="${esc(p.name)}"></div>
+      <div class="frow"><label class="lbl">${t('Upgrades erlaubt')}</label>
         <label class="switch"><input type="checkbox" id="pUp" ${p.upgradeAllowed ? 'checked' : ''}><i></i></label></div>
-      <div class="frow"><label class="lbl">Upgrade bis (Cutoff)</label><select class="sel" id="pCut"></select></div>
-      <div class="sec-title">Erlaubte Qualitäten <span style="text-transform:none;font-weight:400">(oben = beste)</span></div>
+      <div class="frow"><label class="lbl">${t('Upgrade bis (Cutoff)')}</label><select class="sel" id="pCut"></select></div>
+      <div class="sec-title">${t('Erlaubte Qualitäten')} <span style="text-transform:none;font-weight:400">${t('(oben = beste)')}</span></div>
       <div id="pList">${flat.slice().reverse().map(q => `
         <div class="frow" style="grid-template-columns:1fr auto">
           <label class="lbl">${esc(q.name)}</label>
@@ -563,8 +563,8 @@ function ArrModule(svc) {
     };
     refreshCut();
     on(body, 'change', '[data-q]', refreshCut);
-    const bSave = h(`<button class="btn btn-p">Speichern</button>`);
-    const m = App.modal({ title: 'Profil: ' + p.name, body, foot: [bSave] });
+    const bSave = h(`<button class="btn btn-p">${t('Speichern')}</button>`);
+    const m = App.modal({ title: tf('Profil: {0}', p.name), body, foot: [bSave] });
     bSave.addEventListener('click', async () => {
       p.name = body.querySelector('#pName').value;
       p.upgradeAllowed = body.querySelector('#pUp').checked;
@@ -575,7 +575,7 @@ function ArrModule(svc) {
       if (cutSel.value) p.cutoff = +cutSel.value;
       try {
         await API.put(svc, P + '/qualityprofile/' + p.id, p);
-        App.toast('Profil gespeichert', 'ok'); m.close();
+        App.toast(t('Profil gespeichert'), 'ok'); m.close();
         st.profiles = null; drawCfg(document.getElementById('cfgBody'));
       } catch (ex) { App.toast(ex.message, 'err'); }
     });
@@ -586,22 +586,22 @@ function ArrModule(svc) {
     st.roots = roots;
     el.innerHTML = `
       <div class="toolrow"><input class="inp grow" id="rPath" placeholder="/pfad/zum/ordner">
-        <button class="btn btn-p" id="rAdd">${icon('plus')} Hinzufügen</button></div>
+        <button class="btn btn-p" id="rAdd">${icon('plus')} ${t('Hinzufügen')}</button></div>
       ${roots.map(r => `<div class="list-item">
         <div class="svc-ico" style="background:var(--card2)">${icon('folder')}</div>
-        <div class="li-main"><b class="mono">${esc(r.path)}</b><span>${fmtBytes(r.freeSpace)} frei</span></div>
+        <div class="li-main"><b class="mono">${esc(r.path)}</b><span>${tf('{0} frei', fmtBytes(r.freeSpace))}</span></div>
         <button class="btn btn-ic btn-g" data-rdel="${r.id}">${icon('trash')}</button>
-      </div>`).join('') || emptyBox('folder', 'Noch kein Root-Ordner')}`;
+      </div>`).join('') || emptyBox('folder', t('Noch kein Root-Ordner'))}`;
     el.querySelector('#rAdd').addEventListener('click', async () => {
       const path = el.querySelector('#rPath').value.trim();
       if (!path) return;
-      try { await API.post(svc, P + '/rootfolder', { path }); App.toast('Root-Ordner angelegt', 'ok'); drawCfg(el); }
+      try { await API.post(svc, P + '/rootfolder', { path }); App.toast(t('Root-Ordner angelegt'), 'ok'); drawCfg(el); }
       catch (e) { App.toast(e.message, 'err'); }
     });
-    on(el, 'click', '[data-rdel]', async (e, t) => {
-      const r = await App.confirm({ title: 'Root-Ordner entfernen', msg: 'Nur der Eintrag wird entfernt, keine Dateien.', okLabel: 'Entfernen', danger: true });
+    on(el, 'click', '[data-rdel]', async (e, el2) => {
+      const r = await App.confirm({ title: t('Root-Ordner entfernen'), msg: t('Nur der Eintrag wird entfernt, keine Dateien.'), okLabel: t('Entfernen'), danger: true });
       if (!r) return;
-      try { await API.del(svc, P + '/rootfolder/' + t.dataset.rdel); App.toast('Entfernt', 'ok'); drawCfg(el); }
+      try { await API.del(svc, P + '/rootfolder/' + el2.dataset.rdel); App.toast(t('Entfernt'), 'ok'); drawCfg(el); }
       catch (ex) { App.toast(ex.message, 'err'); }
     });
   }
@@ -609,35 +609,35 @@ function ArrModule(svc) {
   /* Indexer & Download-Clients (generisch über fields[]) */
   async function cfgProviders(el, path, label) {
     const list = await API.get(svc, P + path);
-    el.innerHTML = `<div class="hint" style="margin-bottom:12px">${label === 'Indexer' ? 'Tipp: Indexer werden meist zentral über Prowlarr verwaltet und automatisch synchronisiert.' : ''}</div>` +
+    el.innerHTML = `<div class="hint" style="margin-bottom:12px">${label === 'Indexer' ? t('Tipp: Indexer werden meist zentral über Prowlarr verwaltet und automatisch synchronisiert.') : ''}</div>` +
       (list.map(x => `<div class="list-item">
-        <label class="switch" title="Aktiv"><input type="checkbox" data-en="${x.id}" ${provEnabled(x) ? 'checked' : ''}><i></i></label>
-        <div class="li-main"><b>${esc(x.name)}</b><span>${esc(x.implementationName || x.implementation || '')}${x.protocol ? ' · ' + esc(x.protocol) : ''}${x.priority != null ? ' · Priorität ' + x.priority : ''}</span></div>
+        <label class="switch" title="${t('Aktiv')}"><input type="checkbox" data-en="${x.id}" ${provEnabled(x) ? 'checked' : ''}><i></i></label>
+        <div class="li-main"><b>${esc(x.name)}</b><span>${esc(x.implementationName || x.implementation || '')}${x.protocol ? ' · ' + esc(x.protocol) : ''}${x.priority != null ? ' · ' + tf('Priorität {0}', x.priority) : ''}</span></div>
         <button class="btn btn-sm" data-test="${x.id}">${icon('zap')} Test</button>
         <button class="btn btn-sm" data-edit="${x.id}">${icon('edit')}</button>
         <button class="btn btn-ic btn-g" data-del="${x.id}">${icon('trash')}</button>
-      </div>`).join('') || emptyBox('server', `Kein ${label} eingerichtet`));
+      </div>`).join('') || emptyBox('server', tf('Kein {0} eingerichtet', label)));
 
     const byId = id => list.find(x => x.id === +id);
-    on(el, 'change', '[data-en]', async (e, t) => {
-      const x = byId(t.dataset.en);
-      setProvEnabled(x, t.checked);
-      try { await API.put(svc, P + path + '/' + x.id, x); App.toast((t.checked ? 'Aktiviert: ' : 'Deaktiviert: ') + x.name, 'ok'); }
-      catch (ex) { App.toast(ex.message, 'err'); t.checked = !t.checked; }
+    on(el, 'change', '[data-en]', async (e, el2) => {
+      const x = byId(el2.dataset.en);
+      setProvEnabled(x, el2.checked);
+      try { await API.put(svc, P + path + '/' + x.id, x); App.toast(tf(el2.checked ? 'Aktiviert: {0}' : 'Deaktiviert: {0}', x.name), 'ok'); }
+      catch (ex) { App.toast(ex.message, 'err'); el2.checked = !el2.checked; }
     });
-    on(el, 'click', '[data-test]', async (e, t) => {
-      const x = byId(t.dataset.test);
-      t.disabled = true;
-      try { await API.post(svc, P + path + '/test', x); App.toast(x.name + ': Test erfolgreich', 'ok'); }
+    on(el, 'click', '[data-test]', async (e, el2) => {
+      const x = byId(el2.dataset.test);
+      el2.disabled = true;
+      try { await API.post(svc, P + path + '/test', x); App.toast(tf('{0}: Test erfolgreich', x.name), 'ok'); }
       catch (ex) { App.toast(x.name + ': ' + ex.message, 'err'); }
-      t.disabled = false;
+      el2.disabled = false;
     });
-    on(el, 'click', '[data-edit]', (e, t) => providerModal(byId(t.dataset.edit), path, () => drawCfg(el)));
-    on(el, 'click', '[data-del]', async (e, t) => {
-      const x = byId(t.dataset.del);
-      const r = await App.confirm({ title: label + ' löschen', msg: `„${x.name}" wirklich löschen?`, okLabel: 'Löschen', danger: true });
+    on(el, 'click', '[data-edit]', (e, el2) => providerModal(byId(el2.dataset.edit), path, () => drawCfg(el)));
+    on(el, 'click', '[data-del]', async (e, el2) => {
+      const x = byId(el2.dataset.del);
+      const r = await App.confirm({ title: tf('{0} löschen', label), msg: tf('„{0}" wirklich löschen?', x.name), okLabel: t('Löschen'), danger: true });
       if (!r) return;
-      try { await API.del(svc, P + path + '/' + x.id); App.toast('Gelöscht', 'ok'); drawCfg(el); }
+      try { await API.del(svc, P + path + '/' + x.id); App.toast(t('Gelöscht'), 'ok'); drawCfg(el); }
       catch (ex) { App.toast(ex.message, 'err'); }
     });
   }
@@ -656,9 +656,9 @@ function ArrModule(svc) {
     const fe = App.fieldsEditor(obj.fields || []);
     const flags = ['enable', 'enableRss', 'enableAutomaticSearch', 'enableInteractiveSearch'].filter(k => k in obj);
     const head = h(`<div>
-      <div class="frow"><label class="lbl">Name</label><input class="inp" id="xName" value="${esc(obj.name)}"></div>
-      ${'priority' in obj ? `<div class="frow"><label class="lbl">Priorität</label><input class="inp" type="number" id="xPrio" value="${esc(String(obj.priority))}"></div>` : ''}
-      ${flags.map(k => `<div class="frow"><label class="lbl">${k === 'enable' ? 'Aktiv' : k === 'enableRss' ? 'RSS' : k === 'enableAutomaticSearch' ? 'Automatische Suche' : 'Interaktive Suche'}</label>
+      <div class="frow"><label class="lbl">${t('Name')}</label><input class="inp" id="xName" value="${esc(obj.name)}"></div>
+      ${'priority' in obj ? `<div class="frow"><label class="lbl">${t('Priorität')}</label><input class="inp" type="number" id="xPrio" value="${esc(String(obj.priority))}"></div>` : ''}
+      ${flags.map(k => `<div class="frow"><label class="lbl">${k === 'enable' ? t('Aktiv') : k === 'enableRss' ? 'RSS' : k === 'enableAutomaticSearch' ? t('Automatische Suche') : t('Interaktive Suche')}</label>
         <label class="switch"><input type="checkbox" data-flag="${k}" ${obj[k] ? 'checked' : ''}><i></i></label></div>`).join('')}
     </div>`);
     const body = h('<div></div>');
@@ -672,18 +672,18 @@ function ArrModule(svc) {
       return obj;
     };
     const bTest = h(`<button class="btn">${icon('zap')} Test</button>`);
-    const bSave = h(`<button class="btn btn-p">Speichern</button>`);
-    const m = App.modal({ title: obj.name + ' bearbeiten', body, foot: [bTest, bSave], wide: true });
+    const bSave = h(`<button class="btn btn-p">${t('Speichern')}</button>`);
+    const m = App.modal({ title: tf('{0} bearbeiten', obj.name), body, foot: [bTest, bSave], wide: true });
     bTest.addEventListener('click', async () => {
       bTest.disabled = true;
-      try { await API.post(svc, P + path + '/test', collect()); App.toast('Test erfolgreich', 'ok'); }
+      try { await API.post(svc, P + path + '/test', collect()); App.toast(t('Test erfolgreich'), 'ok'); }
       catch (ex) { App.toast(ex.message, 'err'); }
       bTest.disabled = false;
     });
     bSave.addEventListener('click', async () => {
       try {
         await API.put(svc, P + path + '/' + obj.id, collect());
-        App.toast('Gespeichert', 'ok'); m.close(); refresh();
+        App.toast(t('Gespeichert'), 'ok'); m.close(); refresh();
       } catch (ex) { App.toast(ex.message, 'err'); }
     });
   }
@@ -694,12 +694,12 @@ function ArrModule(svc) {
     const form = App.objForm(obj, labels);
     el.innerHTML = '';
     const card = h(`<div class="card"><div class="card-h"><h3>${esc(title)}</h3><span class="spacer"></span></div><div class="card-b"></div></div>`);
-    const bSave = h(`<button class="btn btn-p btn-sm">Speichern</button>`);
+    const bSave = h(`<button class="btn btn-p btn-sm">${t('Speichern')}</button>`);
     card.querySelector('.card-h').append(bSave);
     card.querySelector('.card-b').append(form.el);
     el.append(card);
     bSave.addEventListener('click', async () => {
-      try { await API.put(svc, P + path, form.collect()); App.toast(title + ' gespeichert', 'ok'); }
+      try { await API.put(svc, P + path, form.collect()); App.toast(tf('{0} gespeichert', title), 'ok'); }
       catch (e) { App.toast(e.message, 'err'); }
     });
   }

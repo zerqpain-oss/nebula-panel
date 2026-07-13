@@ -6,15 +6,15 @@ Views.plex = (() => {
   async function render(main) {
     if (!App.svcGuard('plex', main)) return;
     main.innerHTML = `<div class="tabs" id="plexTabs">
-      <span class="tab" data-t="act">Aktivität</span>
-      <span class="tab" data-t="libs">Bibliotheken</span>
-      <span class="tab" data-t="recent">Kürzlich hinzugefügt</span>
-      <span class="tab" data-t="cfg">Server-Einstellungen</span>
+      <span class="tab" data-t="act">${t('Aktivität')}</span>
+      <span class="tab" data-t="libs">${t('Bibliotheken')}</span>
+      <span class="tab" data-t="recent">${t('Kürzlich hinzugefügt')}</span>
+      <span class="tab" data-t="cfg">${t('Server-Einstellungen')}</span>
     </div><div id="plexBody"></div>`;
     const tabs = main.querySelector('#plexTabs');
     tabs.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.t === st.tab));
-    on(tabs, 'click', '.tab', (e, t) => {
-      st.tab = t.dataset.t;
+    on(tabs, 'click', '.tab', (e, el) => {
+      st.tab = el.dataset.t;
       tabs.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x.dataset.t === st.tab));
       show();
     });
@@ -34,8 +34,8 @@ Views.plex = (() => {
     } catch (e) { body.innerHTML = errBox(e.message); }
   }
 
-  function thumbUrl(t, w, ht) {
-    return t ? `/proxy/plex/photo/:/transcode?width=${w}&height=${ht}&minSize=1&upscale=1&url=${encodeURIComponent(t)}` : '';
+  function thumbUrl(th, w, ht) {
+    return th ? `/proxy/plex/photo/:/transcode?width=${w}&height=${ht}&minSize=1&upscale=1&url=${encodeURIComponent(th)}` : '';
   }
 
   /* ---------- Aktivität ---------- */
@@ -62,25 +62,25 @@ Views.plex = (() => {
         <div style="flex:1;min-width:0">
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <b>${esc(title)}</b>
-            <span class="badge ${pl.state === 'paused' ? 'b-warn' : 'b-ok'}">${pl.state === 'paused' ? 'Pausiert' : 'Läuft'}</span>
+            <span class="badge ${pl.state === 'paused' ? 'b-warn' : 'b-ok'}">${pl.state === 'paused' ? t('Pausiert') : t('Läuft')}</span>
             ${ts ? `<span class="badge b-warn">Transcode${ts.videoDecision === 'copy' ? ' (Audio)' : ''}</span>` : '<span class="badge b-ok">Direct Play</span>'}
           </div>
-          <div class="td-sub" style="margin:4px 0 8px">${esc(sub)} · ${icon('user')} ${esc(user)} · ${esc(pl.product || '')} auf ${esc(pl.title || pl.platform || '?')}
+          <div class="td-sub" style="margin:4px 0 8px">${esc(sub)} · ${icon('user')} ${esc(user)} · ${esc(pl.product || '')} ${t('auf')} ${esc(pl.title || pl.platform || '?')}
             ${media.videoResolution ? ' · ' + esc(String(media.videoResolution)) + 'p' : ''}${bw ? ' · ' + bw : ''}</div>
           <div class="prog"><i style="width:${pct}%"></i></div>
           <div class="td-sub" style="margin-top:4px">${msToTime(s.viewOffset)} / ${msToTime(s.duration)}</div>
         </div>
-        ${sid ? `<button class="btn btn-ic btn-g" data-kill="${esc(sid)}" title="Stream beenden">${icon('x')}</button>` : ''}
+        ${sid ? `<button class="btn btn-ic btn-g" data-kill="${esc(sid)}" title="${t('Stream beenden')}">${icon('x')}</button>` : ''}
       </div></div>`;
     }).join('');
 
-    body.innerHTML = `<div style="display:flex;flex-direction:column;gap:14px">${cards || `<div class="card"><div class="card-b">${emptyBox('play', 'Aktuell schaut niemand')}</div></div>`}</div>`;
-    on(body, 'click', '[data-kill]', async (e, t) => {
-      const r = await App.confirm({ title: 'Stream beenden', msg: 'Diesen Stream wirklich beenden?', okLabel: 'Beenden', danger: true });
+    body.innerHTML = `<div style="display:flex;flex-direction:column;gap:14px">${cards || `<div class="card"><div class="card-b">${emptyBox('play', t('Aktuell schaut niemand'))}</div></div>`}</div>`;
+    on(body, 'click', '[data-kill]', async (e, el) => {
+      const r = await App.confirm({ title: t('Stream beenden'), msg: t('Diesen Stream wirklich beenden?'), okLabel: t('Beenden'), danger: true });
       if (!r) return;
       try {
-        await API.get('plex', '/status/sessions/terminate?sessionId=' + encodeURIComponent(t.dataset.kill) + '&reason=' + encodeURIComponent('Vom Admin beendet'));
-        App.toast('Stream beendet', 'ok');
+        await API.get('plex', '/status/sessions/terminate?sessionId=' + encodeURIComponent(el.dataset.kill) + '&reason=' + encodeURIComponent(t('Vom Admin beendet')));
+        App.toast(t('Stream beendet'), 'ok');
       } catch (ex) { App.toast(ex.message, 'err'); }
     });
   }
@@ -106,28 +106,28 @@ Views.plex = (() => {
         <div style="display:flex;gap:12px;align-items:center">
           <div class="svc-ico" style="background:rgba(229,160,13,.14);color:var(--plex)">${icon(typeIcon[d.type] || 'folder')}</div>
           <div style="flex:1;min-width:0"><b style="font-size:15px">${esc(d.title)}</b>
-            <div class="td-sub">${counts[d.key] != null ? fmtNum(counts[d.key]) + ' Einträge' : ''} ${d.refreshing ? '· <span style="color:var(--warn)">Scannt…</span>' : ''}</div></div>
+            <div class="td-sub">${counts[d.key] != null ? tf('{0} Einträge', fmtNum(counts[d.key])) : ''} ${d.refreshing ? `· <span style="color:var(--warn)">${t('Scannt…')}</span>` : ''}</div></div>
         </div>
         <div class="td-sub mono" style="margin:10px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc((d.Location || []).map(l => l.path).join(', '))}">${esc((d.Location || []).map(l => l.path).join(', '))}</div>
         <div style="display:flex;gap:7px;flex-wrap:wrap">
-          <button class="btn btn-sm" data-scan="${d.key}">${icon('refresh')} Scannen</button>
-          <button class="btn btn-sm" data-ana="${d.key}">${icon('activity')} Analysieren</button>
-          <button class="btn btn-sm btn-d" data-trash="${d.key}">${icon('trash')} Papierkorb</button>
+          <button class="btn btn-sm" data-scan="${d.key}">${icon('refresh')} ${t('Scannen')}</button>
+          <button class="btn btn-sm" data-ana="${d.key}">${icon('activity')} ${t('Analysieren')}</button>
+          <button class="btn btn-sm btn-d" data-trash="${d.key}">${icon('trash')} ${t('Papierkorb')}</button>
         </div>
-      </div></div>`).join('') || emptyBox('folder', 'Keine Bibliotheken gefunden')}</div>`;
+      </div></div>`).join('') || emptyBox('folder', t('Keine Bibliotheken gefunden'))}</div>`;
 
-    on(body, 'click', '[data-scan]', async (e, t) => {
-      try { await API.get('plex', `/library/sections/${t.dataset.scan}/refresh`); App.toast('Scan gestartet', 'ok'); }
+    on(body, 'click', '[data-scan]', async (e, el) => {
+      try { await API.get('plex', `/library/sections/${el.dataset.scan}/refresh`); App.toast(t('Scan gestartet'), 'ok'); }
       catch (ex) { App.toast(ex.message, 'err'); }
     });
-    on(body, 'click', '[data-ana]', async (e, t) => {
-      try { await API.raw('PUT', API.p('plex', `/library/sections/${t.dataset.ana}/analyze`)); App.toast('Analyse gestartet', 'ok'); }
+    on(body, 'click', '[data-ana]', async (e, el) => {
+      try { await API.raw('PUT', API.p('plex', `/library/sections/${el.dataset.ana}/analyze`)); App.toast(t('Analyse gestartet'), 'ok'); }
       catch (ex) { App.toast(ex.message, 'err'); }
     });
-    on(body, 'click', '[data-trash]', async (e, t) => {
-      const r = await App.confirm({ title: 'Papierkorb leeren', msg: 'Gelöschte Einträge dieser Bibliothek endgültig entfernen?', okLabel: 'Leeren', danger: true });
+    on(body, 'click', '[data-trash]', async (e, el) => {
+      const r = await App.confirm({ title: t('Papierkorb leeren'), msg: t('Gelöschte Einträge dieser Bibliothek endgültig entfernen?'), okLabel: t('Leeren'), danger: true });
       if (!r) return;
-      try { await API.raw('PUT', API.p('plex', `/library/sections/${t.dataset.trash}/emptyTrash`)); App.toast('Papierkorb geleert', 'ok'); }
+      try { await API.raw('PUT', API.p('plex', `/library/sections/${el.dataset.trash}/emptyTrash`)); App.toast(t('Papierkorb geleert'), 'ok'); }
       catch (ex) { App.toast(ex.message, 'err'); }
     });
   }
@@ -146,7 +146,7 @@ Views.plex = (() => {
         <div class="p-grad"></div>
         <div class="p-info"><b>${esc(title)}</b><span>${esc(String(sub))} · ${relTime(m.addedAt * 1000)}</span></div>
       </div>`;
-    }).join('') || emptyBox('inbox', 'Nichts Neues')}</div>`;
+    }).join('') || emptyBox('inbox', t('Nichts Neues'))}</div>`;
   }
 
   /* ---------- Server-Einstellungen ---------- */
@@ -160,15 +160,15 @@ Views.plex = (() => {
     });
     const changed = new Map();
 
-    const groupNames = { general: 'Allgemein', library: 'Bibliothek', network: 'Netzwerk', transcoder: 'Transcoder', dlna: 'DLNA', extras: 'Extras', channels: 'Kanäle', butler: 'Geplante Aufgaben', allgemein: 'Allgemein' };
+    const groupNames = { general: t('Allgemein'), library: t('Bibliothek'), network: t('Netzwerk'), transcoder: t('Transcoder'), dlna: 'DLNA', extras: t('Extras'), channels: t('Kanäle'), butler: t('Geplante Aufgaben'), allgemein: t('Allgemein') };
 
     body.innerHTML = `
       <div class="toolrow">
         <label style="display:flex;gap:8px;align-items:center;cursor:pointer">
           <span class="switch"><input type="checkbox" id="pAdv" ${st.showAdv ? 'checked' : ''}><i></i></span>
-          <span class="lbl">Erweiterte Einstellungen anzeigen</span></label>
+          <span class="lbl">${t('Erweiterte Einstellungen anzeigen')}</span></label>
         <span class="spacer" style="flex:1"></span>
-        <button class="btn btn-p" id="pSave" disabled>${icon('check')} <span id="pSaveN">Speichern</span></button>
+        <button class="btn btn-p" id="pSave" disabled>${icon('check')} <span id="pSaveN">${t('Speichern')}</span></button>
       </div>
       <div id="pGroups"></div>`;
 
@@ -195,7 +195,7 @@ Views.plex = (() => {
             } else {
               ctrl = `<input class="inp" data-pid="${esc(s.id)}" value="${esc(String(cur == null ? '' : cur))}">`;
             }
-            return `<div class="frow ${s.advanced ? '' : ''}"><label class="lbl" title="${esc(s.id)}">${esc(s.label || s.id)}</label>
+            return `<div class="frow"><label class="lbl" title="${esc(s.id)}">${esc(s.label || s.id)}</label>
               <div>${ctrl}${s.summary ? `<div class="hint">${esc(s.summary)}</div>` : ''}</div></div>`;
           }).join('')}</div></div>`;
       }).join('');
@@ -205,11 +205,11 @@ Views.plex = (() => {
     const saveBtn = body.querySelector('#pSave');
     const updateBtn = () => {
       saveBtn.disabled = changed.size === 0;
-      body.querySelector('#pSaveN').textContent = changed.size ? `Speichern (${changed.size})` : 'Speichern';
+      body.querySelector('#pSaveN').textContent = changed.size ? tf('Speichern ({0})', changed.size) : t('Speichern');
     };
-    on(wrap, 'change', '[data-pid]', (e, t) => {
-      const val = t.dataset.ptype === 'bool' ? (t.checked ? '1' : '0') : t.value;
-      changed.set(t.dataset.pid, val);
+    on(wrap, 'change', '[data-pid]', (e, el) => {
+      const val = el.dataset.ptype === 'bool' ? (el.checked ? '1' : '0') : el.value;
+      changed.set(el.dataset.pid, val);
       updateBtn();
     });
     body.querySelector('#pAdv').addEventListener('change', e => { st.showAdv = e.target.checked; drawGroups(); });
@@ -217,7 +217,7 @@ Views.plex = (() => {
       const qs = [...changed.entries()].map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');
       try {
         await API.raw('PUT', API.p('plex', '/:/prefs?' + qs));
-        App.toast(changed.size + ' Einstellung(en) gespeichert', 'ok');
+        App.toast(tf('{0} Einstellung(en) gespeichert', changed.size), 'ok');
         changed.clear();
         updateBtn();
       } catch (ex) { App.toast(ex.message, 'err'); }

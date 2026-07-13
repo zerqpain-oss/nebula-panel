@@ -49,7 +49,7 @@ Views.dashboard = {
         API.get('sonarr', '/api/v3/wanted/missing?page=1&pageSize=1'),
         API.get('sonarr', '/api/v3/queue?page=1&pageSize=1')
       ]);
-      stats.sonarr = `<b>${fmtNum(series.length)}</b> Serien · <b>${fmtNum(missing.totalRecords)}</b> fehlend · <b>${fmtNum(queue.totalRecords)}</b> in Queue`;
+      stats.sonarr = `<b>${fmtNum(series.length)}</b> ${t('Serien')} · <b>${fmtNum(missing.totalRecords)}</b> ${t('fehlend')} · <b>${fmtNum(queue.totalRecords)}</b> ${t('in Queue')}`;
     })().catch(() => {}));
     if (this.enabled('radarr')) jobs.push((async () => {
       const [movies, missing, queue] = await Promise.all([
@@ -57,13 +57,13 @@ Views.dashboard = {
         API.get('radarr', '/api/v3/wanted/missing?page=1&pageSize=1'),
         API.get('radarr', '/api/v3/queue?page=1&pageSize=1')
       ]);
-      stats.radarr = `<b>${fmtNum(movies.length)}</b> Filme · <b>${fmtNum(missing.totalRecords)}</b> fehlend · <b>${fmtNum(queue.totalRecords)}</b> in Queue`;
+      stats.radarr = `<b>${fmtNum(movies.length)}</b> ${t('Filme')} · <b>${fmtNum(missing.totalRecords)}</b> ${t('fehlend')} · <b>${fmtNum(queue.totalRecords)}</b> ${t('in Queue')}`;
     })().catch(() => {}));
     if (this.enabled('sabnzbd')) jobs.push((async () => {
       const q = (await API.sab('mode=queue&start=0&limit=1')).queue;
       stats.sabnzbd = q.paused
-        ? `<span style="color:var(--warn)">Pausiert</span> · <b>${esc(q.sizeleft)}</b> übrig`
-        : `<b>${fmtBytes((Number(q.kbpersec) || 0) * 1024)}/s</b> · <b>${fmtNum(q.noofslots)}</b> Jobs · ${esc(q.sizeleft)} übrig`;
+        ? `<span style="color:var(--warn)">${t('Pausiert')}</span> · <b>${esc(q.sizeleft)}</b> ${t('übrig')}`
+        : `<b>${fmtBytes((Number(q.kbpersec) || 0) * 1024)}/s</b> · <b>${fmtNum(q.noofslots)}</b> ${t('Jobs')} · ${esc(q.sizeleft)} ${t('übrig')}`;
     })().catch(() => {}));
     if (this.enabled('plex')) jobs.push((async () => {
       const [sess, libs] = await Promise.all([
@@ -72,12 +72,12 @@ Views.dashboard = {
       ]);
       const n = (sess.MediaContainer && sess.MediaContainer.size) || 0;
       const l = (libs.MediaContainer && libs.MediaContainer.size) || 0;
-      stats.plex = `<b>${n}</b> aktive${n === 1 ? 'r' : ''} Stream${n === 1 ? '' : 's'} · <b>${l}</b> Bibliotheken`;
+      stats.plex = tf('{0} aktive Streams · {1} Bibliotheken', `<b>${n}</b>`, `<b>${l}</b>`);
     })().catch(() => {}));
     if (this.enabled('prowlarr')) jobs.push((async () => {
       const idx = await API.get('prowlarr', '/api/v1/indexer');
       const on = idx.filter(i => i.enable).length;
-      stats.prowlarr = `<b>${on}</b> von <b>${idx.length}</b> Indexern aktiv`;
+      stats.prowlarr = tf('{0} von {1} Indexern aktiv', `<b>${on}</b>`, `<b>${idx.length}</b>`);
     })().catch(() => {}));
     await Promise.allSettled(jobs);
 
@@ -85,7 +85,7 @@ Views.dashboard = {
       const m = SVC_META[svc];
       const st = S.status[svc] || {};
       const enabled = this.enabled(svc);
-      const badge = !enabled ? '<span class="badge b-mut">Inaktiv</span>'
+      const badge = !enabled ? `<span class="badge b-mut">${t('Inaktiv')}</span>`
         : st.state === 'on' ? `<span class="badge b-ok">Online</span>`
         : st.state === 'off' ? '<span class="badge b-err">Offline</span>'
         : '<span class="badge b-mut">…</span>';
@@ -96,10 +96,10 @@ Views.dashboard = {
             <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
               <b style="font-size:15px">${m.name}</b>${badge}
             </div>
-            <div class="td-sub" style="margin-top:2px">${st.version ? 'v' + esc(st.version) : m.desc}</div>
-            <div style="margin-top:9px;font-size:12.5px;color:var(--txt2)">${stats[svc] || (enabled ? '–' : 'Nicht konfiguriert')}</div>
+            <div class="td-sub" style="margin-top:2px">${st.version ? 'v' + esc(st.version) : t(m.desc)}</div>
+            <div style="margin-top:9px;font-size:12.5px;color:var(--txt2)">${stats[svc] || (enabled ? '–' : t('Nicht konfiguriert'))}</div>
           </div>
-          ${enabled ? `<button class="btn btn-ic btn-g" title="Original-UI öffnen" onclick="event.stopPropagation();App.openSvc('${svc}')">${icon('external')}</button>` : ''}
+          ${enabled ? `<button class="btn btn-ic btn-g" title="${t('Original-UI öffnen')}" onclick="event.stopPropagation();App.openSvc('${svc}')">${icon('external')}</button>` : ''}
         </div></div>`;
     }).join('');
   },
@@ -108,7 +108,7 @@ Views.dashboard = {
   async sabCard(soft) {
     const el = document.getElementById('sabCard');
     if (!el) return;
-    if (!this.enabled('sabnzbd')) { el.innerHTML = `<div class="card-h"><h3>Downloads</h3></div><div class="card-b">${emptyBox('download', 'SABnzbd nicht konfiguriert')}</div>`; return; }
+    if (!this.enabled('sabnzbd')) { el.innerHTML = `<div class="card-h"><h3>${t('Downloads')}</h3></div><div class="card-b">${emptyBox('download', t('SABnzbd nicht konfiguriert'))}</div>`; return; }
     try {
       const q = (await API.sab('mode=queue&start=0&limit=6')).queue;
       S.sab = q;
@@ -119,23 +119,23 @@ Views.dashboard = {
         <div class="list-item">
           <div class="li-main">
             <b title="${esc(s.filename)}">${esc(s.filename)}</b>
-            <span>${esc(s.cat)} · ${esc(s.sizeleft)} übrig · ${esc(s.timeleft)}</span>
+            <span>${esc(s.cat)} · ${esc(s.sizeleft)} ${t('übrig')} · ${esc(s.timeleft)}</span>
           </div>
           <div style="width:110px;flex:0 0 110px"><div class="prog"><i style="width:${esc(s.percentage)}%"></i></div></div>
           <span class="td-sub" style="width:42px;text-align:right">${esc(s.percentage)}%</span>
         </div>`).join('');
       el.innerHTML = `
-        <div class="card-h"><h3>Downloads</h3><span class="sub">${fmtNum(q.noofslots)} Jobs · ${esc(q.sizeleft || '0')} übrig</span>
+        <div class="card-h"><h3>${t('Downloads')}</h3><span class="sub">${tf('{0} Jobs', fmtNum(q.noofslots))} · ${tf('{0} übrig', esc(q.sizeleft || '0'))}</span>
           <span class="spacer"></span>
-          <span class="stat-big" style="font-size:19px;color:${q.paused ? 'var(--warn)' : 'var(--acc2)'}">${q.paused ? 'Pausiert' : fmtBytes(kb * 1024) + '/s'}</span>
+          <span class="stat-big" style="font-size:19px;color:${q.paused ? 'var(--warn)' : 'var(--acc2)'}">${q.paused ? t('Pausiert') : fmtBytes(kb * 1024) + '/s'}</span>
         </div>
         <div class="card-b" style="padding-top:10px">
           ${Views.dashboard.spark(S.speedHist)}
-          ${rows || emptyBox('inbox', 'Warteschlange ist leer')}
-          <div style="margin-top:10px;text-align:right"><a href="#/sabnzbd" class="btn btn-sm btn-g">Alle anzeigen ${icon('chevr')}</a></div>
+          ${rows || emptyBox('inbox', t('Warteschlange ist leer'))}
+          <div style="margin-top:10px;text-align:right"><a href="#/sabnzbd" class="btn btn-sm btn-g">${t('Alle anzeigen')} ${icon('chevr')}</a></div>
         </div>`;
     } catch (e) {
-      if (!soft) el.innerHTML = `<div class="card-h"><h3>Downloads</h3></div><div class="card-b">${errBox(e.message)}</div>`;
+      if (!soft) el.innerHTML = `<div class="card-h"><h3>${t('Downloads')}</h3></div><div class="card-b">${errBox(e.message)}</div>`;
     }
   },
 
@@ -155,7 +155,7 @@ Views.dashboard = {
   async plexCard(soft) {
     const el = document.getElementById('plexCard');
     if (!el) return;
-    if (!this.enabled('plex')) { el.innerHTML = `<div class="card-h"><h3>Gerade läuft</h3></div><div class="card-b">${emptyBox('play', 'Plex nicht konfiguriert')}</div>`; return; }
+    if (!this.enabled('plex')) { el.innerHTML = `<div class="card-h"><h3>${t('Gerade läuft')}</h3></div><div class="card-b">${emptyBox('play', t('Plex nicht konfiguriert'))}</div>`; return; }
     try {
       const j = await API.get('plex', '/status/sessions');
       const sess = (j.MediaContainer && j.MediaContainer.Metadata) || [];
@@ -174,10 +174,10 @@ Views.dashboard = {
           </div>
         </div>`;
       }).join('');
-      el.innerHTML = `<div class="card-h"><h3>Gerade läuft</h3><span class="sub">${sess.length} Stream${sess.length === 1 ? '' : 's'}</span></div>
-        <div class="card-b" style="padding-top:6px">${rows || emptyBox('play', 'Niemand schaut gerade')}</div>`;
+      el.innerHTML = `<div class="card-h"><h3>${t('Gerade läuft')}</h3><span class="sub">${sess.length} Stream${sess.length === 1 ? '' : 's'}</span></div>
+        <div class="card-b" style="padding-top:6px">${rows || emptyBox('play', t('Niemand schaut gerade'))}</div>`;
     } catch (e) {
-      if (!soft) el.innerHTML = `<div class="card-h"><h3>Gerade läuft</h3></div><div class="card-b">${errBox(e.message)}</div>`;
+      if (!soft) el.innerHTML = `<div class="card-h"><h3>${t('Gerade läuft')}</h3></div><div class="card-b">${errBox(e.message)}</div>`;
     }
   },
 
@@ -185,7 +185,7 @@ Views.dashboard = {
   async calCard() {
     const el = document.getElementById('calCard');
     if (!el) return;
-    el.innerHTML = `<div class="card-h"><h3>Demnächst</h3><span class="sub">nächste 7 Tage</span></div><div class="card-b">${spinner()}</div>`;
+    el.innerHTML = `<div class="card-h"><h3>${t('Demnächst')}</h3><span class="sub">${t('nächste 7 Tage')}</span></div><div class="card-b">${spinner()}</div>`;
     const start = new Date(); start.setHours(0, 0, 0, 0);
     const end = new Date(start.getTime() + 8 * 86400000);
     const iso = d => d.toISOString();
@@ -201,7 +201,7 @@ Views.dashboard = {
       .then(ms => ms.forEach(m => {
         const dates = [['Kino', m.inCinemas], ['Digital', m.digitalRelease], ['Disc', m.physicalRelease]]
           .filter(x => x[1] && new Date(x[1]) >= start && new Date(x[1]) < end);
-        dates.forEach(d => items.push({ date: d[1], svc: 'radarr', has: m.hasFile, label: `${m.title} (${m.year})`, sub: d[0] + '-Release' }));
+        dates.forEach(d => items.push({ date: d[1], svc: 'radarr', has: m.hasFile, label: `${m.title} (${m.year})`, sub: tf('{0}-Release', t(d[0])) }));
       })).catch(() => {}));
     await Promise.allSettled(jobs);
     items.sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -212,12 +212,12 @@ Views.dashboard = {
       if (dl !== lastDay) { html += `<div class="day-h">${icon('calendar')} ${dl}</div>`; lastDay = dl; }
       html += `<div class="list-item" style="padding:7px 4px">
         <i class="dot" style="background:${SVC_META[it.svc].color}"></i>
-        <div class="li-main"><b>${esc(it.label)}</b><span>${esc(it.sub)} · ${timeHM(it.date)} Uhr</span></div>
-        ${it.has ? '<span class="badge b-ok">Vorhanden</span>' : ''}
+        <div class="li-main"><b>${esc(it.label)}</b><span>${esc(it.sub)} · ${tf('{0} Uhr', timeHM(it.date))}</span></div>
+        ${it.has ? `<span class="badge b-ok">${t('Vorhanden')}</span>` : ''}
       </div>`;
     });
-    el.innerHTML = `<div class="card-h"><h3>Demnächst</h3><span class="sub">nächste 7 Tage</span></div>
-      <div class="card-b" style="padding-top:10px">${html || emptyBox('calendar', 'Keine anstehenden Veröffentlichungen')}</div>`;
+    el.innerHTML = `<div class="card-h"><h3>${t('Demnächst')}</h3><span class="sub">${t('nächste 7 Tage')}</span></div>
+      <div class="card-b" style="padding-top:10px">${html || emptyBox('calendar', t('Keine anstehenden Veröffentlichungen'))}</div>`;
   },
 
   /* ---------- Health ---------- */
@@ -236,8 +236,8 @@ Views.dashboard = {
       <span style="color:${i.type === 'error' ? 'var(--err)' : 'var(--warn)'};flex:0 0 16px">${icon('warning')}</span>
       <div class="li-main" style="white-space:normal"><b style="white-space:normal">${esc(i.msg)}</b><span>${SVC_META[i.svc].name}</span></div>
     </div>`).join('');
-    el.innerHTML = `<div class="card-h"><h3>Systemzustand</h3>${issues.length ? `<span class="badge b-warn">${issues.length}</span>` : '<span class="badge b-ok">OK</span>'}</div>
-      <div class="card-b" style="padding-top:6px">${rows || `<div class="empty" style="padding:18px">${icon('check')}<div>Alles in Ordnung</div></div>`}</div>`;
+    el.innerHTML = `<div class="card-h"><h3>${t('Systemzustand')}</h3>${issues.length ? `<span class="badge b-warn">${issues.length}</span>` : '<span class="badge b-ok">OK</span>'}</div>
+      <div class="card-b" style="padding-top:6px">${rows || `<div class="empty" style="padding:18px">${icon('check')}<div>${t('Alles in Ordnung')}</div></div>`}</div>`;
   },
 
   /* ---------- Speicherplatz ---------- */
@@ -255,13 +255,13 @@ Views.dashboard = {
       const pct = Math.round(used / d.totalSpace * 100);
       return `<div style="padding:8px 0">
         <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px">
-          <span class="mono">${esc(d.path)}</span><span style="color:var(--txt3)">${fmtBytes(d.freeSpace)} frei</span>
+          <span class="mono">${esc(d.path)}</span><span style="color:var(--txt3)">${tf('{0} frei', fmtBytes(d.freeSpace))}</span>
         </div>
         <div class="prog ${pct > 92 ? '' : pct > 80 ? 'p-warn' : 'p-ok'}"><i style="width:${pct}%"></i></div>
       </div>`;
     }).join('');
-    el.innerHTML = `<div class="card-h"><h3>Speicherplatz</h3></div>
-      <div class="card-b" style="padding-top:8px">${rows || emptyBox('disk', 'Keine Daten (Sonarr/Radarr nötig)')}</div>`;
+    el.innerHTML = `<div class="card-h"><h3>${t('Speicherplatz')}</h3></div>
+      <div class="card-b" style="padding-top:8px">${rows || emptyBox('disk', t('Keine Daten (Sonarr/Radarr nötig)'))}</div>`;
   },
 
   /* ---------- Kürzlich hinzugefügt (Plex) ---------- */
@@ -284,10 +284,10 @@ Views.dashboard = {
           <div class="p-info"><b>${esc(title)}</b><span>${esc(String(sub))} · ${relTime(m.addedAt * 1000)}</span></div>
         </div>`;
       }).join('');
-      el.innerHTML = `<div class="card-h"><h3>Kürzlich hinzugefügt</h3><span class="sub">Plex</span></div>
-        <div class="card-b"><div class="pgrid" style="grid-template-columns:repeat(auto-fill,minmax(118px,1fr))">${cards || emptyBox('inbox', 'Nichts Neues')}</div></div>`;
+      el.innerHTML = `<div class="card-h"><h3>${t('Kürzlich hinzugefügt')}</h3><span class="sub">Plex</span></div>
+        <div class="card-b"><div class="pgrid" style="grid-template-columns:repeat(auto-fill,minmax(118px,1fr))">${cards || emptyBox('inbox', t('Nichts Neues'))}</div></div>`;
     } catch (e) {
-      el.innerHTML = `<div class="card-h"><h3>Kürzlich hinzugefügt</h3></div><div class="card-b">${errBox(e.message)}</div>`;
+      el.innerHTML = `<div class="card-h"><h3>${t('Kürzlich hinzugefügt')}</h3></div><div class="card-b">${errBox(e.message)}</div>`;
     }
   }
 };

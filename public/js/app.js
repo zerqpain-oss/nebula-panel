@@ -80,32 +80,32 @@ function fmtBytes(n) {
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
   return (i === 0 ? n : n.toFixed(n >= 100 ? 0 : 1)) + ' ' + u[i];
 }
-function fmtNum(n) { return Number(n || 0).toLocaleString('de-DE'); }
+function fmtNum(n) { return Number(n || 0).toLocaleString(LOCALE); }
 function relTime(d) {
-  const t = new Date(d).getTime();
-  if (!t) return '–';
-  let diff = (Date.now() - t) / 1000;
+  const ts = new Date(d).getTime();
+  if (!ts) return '–';
+  let diff = (Date.now() - ts) / 1000;
   const fut = diff < 0;
   diff = Math.abs(diff);
   let s;
-  if (diff < 60) s = 'wenigen Sek.';
-  else if (diff < 3600) s = Math.round(diff / 60) + ' Min.';
-  else if (diff < 86400) s = Math.round(diff / 3600) + ' Std.';
-  else if (diff < 86400 * 30) s = Math.round(diff / 86400) + ' Tagen';
-  else return new Date(d).toLocaleDateString('de-DE');
-  return fut ? 'in ' + s : 'vor ' + s;
+  if (diff < 60) s = t('wenigen Sek.');
+  else if (diff < 3600) s = tf('{0} Min.', Math.round(diff / 60));
+  else if (diff < 86400) s = tf('{0} Std.', Math.round(diff / 3600));
+  else if (diff < 86400 * 30) s = tf('{0} Tagen', Math.round(diff / 86400));
+  else return new Date(d).toLocaleDateString(LOCALE);
+  return fut ? tf('in {0}', s) : tf('vor {0}', s);
 }
 function dayLabel(d) {
   const x = new Date(d); x.setHours(0, 0, 0, 0);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const diff = Math.round((x - today) / 86400000);
-  if (diff === 0) return 'Heute';
-  if (diff === 1) return 'Morgen';
-  if (diff === -1) return 'Gestern';
-  return x.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
+  if (diff === 0) return t('Heute');
+  if (diff === 1) return t('Morgen');
+  if (diff === -1) return t('Gestern');
+  return x.toLocaleDateString(LOCALE, { weekday: 'long', day: '2-digit', month: '2-digit' });
 }
 function timeHM(d) {
-  return new Date(d).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  return new Date(d).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit' });
 }
 const spinner = () => '<div class="spinner"></div>';
 function errBox(msg) {
@@ -126,7 +126,7 @@ const App = {
     try { st = await API.panelGet('authstate'); } catch (e) {}
     const app = document.getElementById('app');
     if (!st) {
-      app.innerHTML = `<div class="login-wrap"><div class="login-card"><div class="logo-orb"></div><h2>Server nicht erreichbar</h2><p>Bitte Seite neu laden.</p></div></div>`;
+      app.innerHTML = `<div class="login-wrap"><div class="login-card"><div class="logo-orb"></div><h2>${t('Server nicht erreichbar')}</h2><p>${t('Bitte Seite neu laden.')}</p></div></div>`;
       return;
     }
     S.name = st.name || 'Nebula';
@@ -143,13 +143,17 @@ const App = {
       <div class="login-wrap"><div class="login-card">
         <div class="logo-orb"></div>
         <h2>${esc(S.name)}</h2>
-        <p>${setup ? 'Willkommen! Lege ein Passwort für dein Panel fest.' : 'Media Control Center'}</p>
+        <p>${setup ? t('Willkommen! Lege ein Passwort für dein Panel fest.') : 'Media Control Center'}</p>
         <form id="loginForm">
-          <input class="inp" type="password" id="pw" placeholder="${setup ? 'Neues Passwort (min. 6 Zeichen)' : 'Passwort'}" autofocus autocomplete="${setup ? 'new-password' : 'current-password'}">
-          ${setup ? '<input class="inp" type="password" id="pw2" placeholder="Passwort wiederholen">' : ''}
-          <button class="btn btn-p" type="submit">${setup ? 'Einrichten' : 'Anmelden'}</button>
+          <input class="inp" type="password" id="pw" placeholder="${setup ? t('Neues Passwort (min. 6 Zeichen)') : t('Passwort')}" autofocus autocomplete="${setup ? 'new-password' : 'current-password'}">
+          ${setup ? `<input class="inp" type="password" id="pw2" placeholder="${t('Passwort wiederholen')}">` : ''}
+          <button class="btn btn-p" type="submit">${setup ? t('Einrichten') : t('Anmelden')}</button>
         </form>
         <div class="login-err" id="loginErr"></div>
+        <div style="margin-top:16px;display:flex;gap:6px;justify-content:center">
+          <button class="btn btn-sm ${LANG === 'de' ? '' : 'btn-g'}" onclick="setLang('de')">DE</button>
+          <button class="btn btn-sm ${LANG === 'en' ? '' : 'btn-g'}" onclick="setLang('en')">EN</button>
+        </div>
       </div></div>`;
     document.getElementById('loginForm').addEventListener('submit', async e => {
       e.preventDefault();
@@ -158,7 +162,7 @@ const App = {
       err.textContent = '';
       try {
         if (setup) {
-          if (pw !== document.getElementById('pw2').value) { err.textContent = 'Passwörter stimmen nicht überein'; return; }
+          if (pw !== document.getElementById('pw2').value) { err.textContent = t('Passwörter stimmen nicht überein'); return; }
           await API.panelPost('setup', { password: pw });
         } else {
           await API.panelPost('login', { password: pw });
@@ -200,13 +204,13 @@ const App = {
           <div class="logo"><div class="logo-orb"></div><div class="logo-txt"><b>${esc(S.name)}</b><span>Media Control</span></div></div>
           <nav id="nav">
             <div class="nav-item" data-nav="dashboard">${icon('grid')}<span>Dashboard</span></div>
-            <div class="nav-sep">Dienste</div>
+            <div class="nav-sep">${t('Dienste')}</div>
             ${navSvc}
-            <div class="nav-sep">System</div>
-            <div class="nav-item" data-nav="settings">${icon('settings')}<span>Einstellungen</span></div>
+            <div class="nav-sep">${t('System')}</div>
+            <div class="nav-item" data-nav="settings">${icon('settings')}<span>${t('Einstellungen')}</span></div>
           </nav>
           <div class="side-foot">
-            <div class="nav-item" id="btnLogout">${icon('logout')}<span>Abmelden</span></div>
+            <div class="nav-item" id="btnLogout">${icon('logout')}<span>${t('Abmelden')}</span></div>
           </div>
         </aside>
         <div class="mainwrap">
@@ -217,7 +221,7 @@ const App = {
           <main id="main"></main>
         </div>
       </div>`;
-    on(app, 'click', '.nav-item[data-nav]', (e, t) => { location.hash = '#/' + t.dataset.nav; });
+    on(app, 'click', '.nav-item[data-nav]', (e, el) => { location.hash = '#/' + el.dataset.nav; });
     document.getElementById('btnLogout').addEventListener('click', async () => {
       try { await API.panelPost('logout', {}); } catch (e) {}
       App.authScreen(false);
@@ -231,7 +235,7 @@ const App = {
     document.querySelectorAll('.nav-item[data-nav]').forEach(el =>
       el.classList.toggle('active', el.dataset.nav === name));
     const v = Views[name];
-    document.getElementById('pageTitle').textContent = v.title;
+    document.getElementById('pageTitle').textContent = typeof v.title === 'function' ? v.title() : v.title;
     const main = document.getElementById('main');
     main.innerHTML = spinner();
     Promise.resolve()
@@ -245,8 +249,8 @@ const App = {
     if (s && s.enabled && s.url && s.apiKey) return true;
     el.innerHTML = `<div class="card"><div class="card-b empty">
       ${icon('settings')}
-      <div style="margin-bottom:14px">${SVC_META[svc].name} ist noch nicht konfiguriert.</div>
-      <button class="btn btn-p" onclick="location.hash='#/settings'">Zu den Einstellungen</button>
+      <div style="margin-bottom:14px">${tf('{0} ist noch nicht konfiguriert.', SVC_META[svc].name)}</div>
+      <button class="btn btn-p" onclick="location.hash='#/settings'">${t('Zu den Einstellungen')}</button>
     </div></div>`;
     return false;
   },
@@ -303,12 +307,12 @@ const App = {
     if (S.sab) {
       const kb = Number(S.sab.kbpersec) || 0;
       html += `<span class="chip clickable hide-m" onclick="location.hash='#/sabnzbd'" style="color:${S.sab.paused ? 'var(--warn)' : ''}">
-        ${icon(S.sab.paused ? 'pause' : 'download')} ${S.sab.paused ? 'Pausiert' : `<b>${fmtBytes(kb * 1024)}/s</b>`}</span>`;
+        ${icon(S.sab.paused ? 'pause' : 'download')} ${S.sab.paused ? t('Pausiert') : `<b>${fmtBytes(kb * 1024)}/s</b>`}</span>`;
     }
     if (S.plexSessions) {
       html += `<span class="chip clickable hide-m" onclick="location.hash='#/plex'">${icon('play')} <b>${S.plexSessions.length}</b>&nbsp;Stream${S.plexSessions.length === 1 ? '' : 's'}</span>`;
     }
-    html += `<button class="btn btn-ic btn-g" title="Ansicht neu laden" onclick="App.route()">${icon('refresh')}</button>`;
+    html += `<button class="btn btn-ic btn-g" title="${t('Ansicht neu laden')}" onclick="App.route()">${icon('refresh')}</button>`;
     el.innerHTML = html;
   },
 
@@ -324,10 +328,10 @@ const App = {
 
   /* ---------- Toast ---------- */
   toast(msg, type) {
-    const t = h(`<div class="toast t-${type || 'info'}">${icon(type === 'ok' ? 'check' : type === 'err' ? 'warning' : 'info')}<span class="wrapline">${esc(msg)}</span></div>`);
-    document.getElementById('toasts').append(t);
-    setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .4s'; }, 3800);
-    setTimeout(() => t.remove(), 4300);
+    const el = h(`<div class="toast t-${type || 'info'}">${icon(type === 'ok' ? 'check' : type === 'err' ? 'warning' : 'info')}<span class="wrapline">${esc(msg)}</span></div>`);
+    document.getElementById('toasts').append(el);
+    setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .4s'; }, 3800);
+    setTimeout(() => el.remove(), 4300);
   },
 
   /* ---------- Modal ---------- */
@@ -354,7 +358,7 @@ const App = {
         ${(checks || []).map(c => `<label style="display:flex;align-items:center;gap:10px;margin-top:14px;cursor:pointer">
           <span class="switch"><input type="checkbox" data-chk="${c.id}" ${c.checked ? 'checked' : ''}><i></i></span>
           <span class="lbl">${esc(c.label)}</span></label>`).join('')}</div>`);
-      const bCancel = h(`<button class="btn">Abbrechen</button>`);
+      const bCancel = h(`<button class="btn">${t('Abbrechen')}</button>`);
       const bOk = h(`<button class="btn ${danger ? 'btn-d' : 'btn-p'}">${esc(okLabel || 'OK')}</button>`);
       const m = App.modal({ title, body, foot: [bCancel, bOk], onClose: () => resolve(null) });
       bCancel.addEventListener('click', () => m.close());
@@ -396,7 +400,7 @@ const App = {
         <div>${ctrl}${f.helpText ? `<div class="hint">${esc(f.helpText)}</div>` : ''}</div></div>`));
     });
     if (hasAdv) {
-      const btn = h(`<button class="btn btn-sm btn-g" style="margin-top:10px">${icon('chevd')} Erweiterte Optionen</button>`);
+      const btn = h(`<button class="btn btn-sm btn-g" style="margin-top:10px">${icon('chevd')} ${t('Erweiterte Optionen')}</button>`);
       btn.addEventListener('click', () => wrap.classList.toggle('show-adv'));
       wrap.append(btn);
     }
@@ -420,7 +424,8 @@ const App = {
     const keys = Object.keys(obj).filter(k => !skip.includes(k) && (typeof obj[k] !== 'object' || obj[k] === null));
     keys.forEach(k => {
       const v = obj[k];
-      const label = (labels && labels[k]) || k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase());
+      const pretty = k.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase());
+      const label = LANG === 'de' ? ((labels && labels[k]) || pretty) : pretty;
       let ctrl;
       if (typeof v === 'boolean') {
         ctrl = `<label class="switch"><input type="checkbox" data-ok="${esc(k)}" ${v ? 'checked' : ''}><i></i></label>`;
