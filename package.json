@@ -1,6 +1,6 @@
 {
   "name": "nebula-panel",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "description": "Nebula – Web-Panel für Sonarr, Radarr, SABnzbd, Plex & Prowlarr",
   "main": "server.js",
   "scripts": {

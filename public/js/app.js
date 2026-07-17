@@ -196,6 +196,14 @@ const App = {
     App.chipPoll();
     App.everyGlobal(30000, () => App.statusCheck());
     App.everyGlobal(8000, () => App.chipPoll());
+    /* Update-Hinweis (einmal pro Sitzung) */
+    if (!App._verChecked) {
+      App._verChecked = true;
+      API.panelGet('version').then(v => {
+        S.version = v;
+        if (v.updateAvailable) App.toast(tf('Update verfügbar: {0} → {1}', v.current, v.latest), 'info');
+      }).catch(() => {});
+    }
   },
 
   enabled(svc) {
@@ -219,6 +227,7 @@ const App = {
             ${active.length ? `<div class="nav-sep">${t('Dienste')}</div>` : ''}
             ${navSvc}
             <div class="nav-sep">${t('System')}</div>
+            <div class="nav-item" data-nav="logs">${icon('list')}<span>${t('Protokolle')}</span></div>
             <div class="nav-item" data-nav="settings">${icon('settings')}<span>${t('Einstellungen')}</span></div>
           </nav>
           <div class="side-foot">

@@ -19,6 +19,12 @@ Views.settings = (() => {
   async function render(main) {
     const cfg = await API.panelGet('config');
     S.cfg = cfg;
+    const n = cfg.notify || {};
+    const nt = n.telegram || {}, nd = n.discord || {}, nn = n.ntfy || {}, ne = n.events || {};
+    const swRow = (label, key, checked) => `<div class="frow"><label class="lbl">${label}</label>
+      <label class="switch"><input type="checkbox" data-nt="${key}" ${checked ? 'checked' : ''}><i></i></label></div>`;
+    const inRow = (label, key, val, type) => `<div class="frow"><label class="lbl">${label}</label>
+      <input class="inp" type="${type || 'text'}" data-nt="${key}" value="${esc(val || '')}" autocomplete="off"></div>`;
 
     main.innerHTML = `
       <div class="grid g-2" id="svcForms"></div>
@@ -42,7 +48,50 @@ Views.settings = (() => {
           <div class="frow"><label class="lbl">${t('Wiederholen')}</label><input class="inp" type="password" id="pwNew2" autocomplete="new-password"></div>
           <div style="margin-top:12px;text-align:right"><button class="btn" id="savePw">${t('Passwort ändern')}</button></div>
         </div></div>
-      </div>`;
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-h"><h3>${t('Benachrichtigungen')}</h3><span class="spacer"></span>
+          <button class="btn btn-sm" id="notifyTest">${icon('zap')} ${t('Testnachricht senden')}</button>
+          <button class="btn btn-sm btn-p" id="notifySave">${t('Speichern')}</button>
+        </div>
+        <div class="card-b"><div class="grid g-2">
+          <div>
+            <div class="sec-title">Telegram</div>
+            ${swRow(t('Aktiv'), 'telegram.enabled', nt.enabled)}
+            ${inRow(t('Bot-Token'), 'telegram.botToken', nt.botToken, 'password')}
+            ${inRow(t('Chat-ID'), 'telegram.chatId', nt.chatId)}
+            <div class="sec-title">Discord</div>
+            ${swRow(t('Aktiv'), 'discord.enabled', nd.enabled)}
+            ${inRow(t('Webhook-URL'), 'discord.webhookUrl', nd.webhookUrl, 'password')}
+            <div class="sec-title">ntfy</div>
+            ${swRow(t('Aktiv'), 'ntfy.enabled', nn.enabled)}
+            ${inRow(t('Server'), 'ntfy.server', nn.server || 'https://ntfy.sh')}
+            ${inRow('Topic', 'ntfy.topic', nn.topic)}
+          </div>
+          <div>
+            <div class="sec-title">${t('Ereignisse')}</div>
+            ${swRow(t('Import abgeschlossen'), 'events.imported', ne.imported)}
+            ${swRow(t('Download fehlgeschlagen'), 'events.failed', ne.failed)}
+            ${swRow(t('Systemwarnungen'), 'events.health', ne.health)}
+            ${swRow(t('Speicherplatz-Warnung'), 'events.disk', ne.disk)}
+            ${swRow(t('Release geholt (Grab)'), 'events.grabbed', ne.grabbed)}
+            <div class="frow"><label class="lbl">${t('Warnschwelle Speicher (%)')}</label>
+              <input class="inp" type="number" id="ntThresh" min="50" max="99" value="${n.diskThreshold || 90}"></div>
+            <div class="hint" style="margin-top:8px">${t('Geprüft wird alle 3 Minuten. Nach dem Speichern greifen die Regeln sofort.')}</div>
+          </div>
+        </div></div>
+      </div>
+      <div class="card" style="margin-top:16px">
+        <div class="card-h"><h3>${t('Kalender-Abo (iCal)')}</h3></div>
+        <div class="card-b">
+          <p class="hint" style="margin-bottom:10px">${t('Diese URL in Google/Apple Kalender als Abo hinzufügen:')} ${t('Sie enthält kommende Episoden, Filme, Alben und Bücher.')}</p>
+          <div style="display:flex;gap:8px">
+            <input class="inp mono" id="icalUrl" readonly value="${esc(location.origin + '/calendar.ics?token=' + (cfg.panel.icalToken || ''))}">
+            <button class="btn" id="icalCopy">${t('Kopieren')}</button>
+          </div>
+        </div>
+      </div>
+      <div class="hint" style="margin-top:18px;text-align:center" id="verLine"></div>`;
 
     const forms = main.querySelector('#svcForms');
     forms.innerHTML = SVCS.map(svc => {
@@ -136,6 +185,56 @@ Views.settings = (() => {
         ['#pwCur', '#pwNew', '#pwNew2'].forEach(x => main.querySelector(x).value = '');
       } catch (e) { App.toast(e.message, 'err'); }
     });
+
+    /* --- Benachrichtigungen --- */
+    const collectNotify = () => {
+      const notify = { telegram: {}, discord: {}, ntfy: {}, events: {} };
+      main.querySelectorAll('[data-nt]').forEach(inp => {
+        const [grp, key] = inp.dataset.nt.split('.');
+        notify[grp][key] = inp.type === 'checkbox' ? inp.checked : inp.value;
+      });
+      notify.diskThreshold = +main.querySelector('#ntThresh').value || 90;
+      return notify;
+    };
+    main.querySelector('#notifySave').addEventListener('click', async () => {
+      try {
+        await API.panelPost('config', { notify: collectNotify() });
+        App.toast(t('Benachrichtigungen gespeichert'), 'ok');
+      } catch (e) { App.toast(e.message, 'err'); }
+    });
+    main.querySelector('#notifyTest').addEventListener('click', async e => {
+      e.target.disabled = true;
+      try {
+        await API.panelPost('config', { notify: collectNotify() });
+        const r = await API.panelPost('notify/test', {});
+        if (r.ok) App.toast(t('Testnachricht verschickt'), 'ok');
+        else App.toast(r.error || t('Senden fehlgeschlagen'), 'err');
+      } catch (ex) { App.toast(ex.message, 'err'); }
+      e.target.disabled = false;
+    });
+
+    /* --- iCal kopieren --- */
+    main.querySelector('#icalCopy').addEventListener('click', async () => {
+      const inp = main.querySelector('#icalUrl');
+      try {
+        await navigator.clipboard.writeText(inp.value);
+        App.toast(t('Kopiert'), 'ok');
+      } catch (e) {
+        inp.select();
+        document.execCommand('copy');
+        App.toast(t('Kopiert'), 'ok');
+      }
+    });
+
+    /* --- Version / Update --- */
+    (S.version ? Promise.resolve(S.version) : API.panelGet('version')).then(v => {
+      S.version = v;
+      const el = main.querySelector('#verLine');
+      if (!el) return;
+      el.innerHTML = v.updateAvailable
+        ? `${icon('arrup')} ${tf('Update verfügbar: {0} → {1}', esc(v.current), esc(v.latest))} · <a href="https://github.com/zerqpain-oss/nebula-panel" target="_blank" rel="noopener">GitHub</a>`
+        : tf('Version {0} – aktuell', esc(v.current));
+    }).catch(() => {});
   }
 
   return { title: () => t('Einstellungen'), render };

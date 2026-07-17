@@ -118,6 +118,53 @@ function ArrModule(svc) {
     App.toast(msg || t('Suche gestartet'), 'ok');
   }
 
+  /* ---------- Interaktive Release-Suche ---------- */
+  async function releaseModal(query, title) {
+    const m = App.modal({ title: 'Releases · ' + title, body: spinner(), wide: true });
+    let list;
+    try { list = await API.get(svc, P + '/release?' + query); }
+    catch (e) { m.bodyEl.innerHTML = errBox(e.message); return; }
+    list.sort((a, b) => (a.rejected === b.rejected ? 0 : a.rejected ? 1 : -1) || (b.seeders || 0) - (a.seeders || 0));
+    const draw = q => {
+      const filtered = list.filter(r => !q || (r.title || '').toLowerCase().includes(q));
+      m.bodyEl.querySelector('#relList').innerHTML = filtered.length ? `<table class="tbl"><thead><tr>
+          <th>${t('Titel')}</th><th>Indexer</th><th>${t('Qualität')}</th><th>${t('Größe')}</th><th>${t('Seeder')}</th><th>${t('Alter')}</th><th></th>
+        </tr></thead><tbody>${filtered.map(r => {
+          const gi = list.indexOf(r);
+          return `<tr style="${r.rejected ? 'opacity:.55' : ''}">
+            <td style="max-width:380px"><div class="td-main wrapline">${esc(r.title)}</div>
+              ${r.rejected ? `<div class="td-sub" style="color:var(--warn)">${icon('warning')} ${esc((r.rejections || []).join(' · '))}</div>` : ''}</td>
+            <td style="white-space:nowrap">${esc(r.indexer || '')} <span class="badge ${r.protocol === 'torrent' ? 'b-acc' : 'b-mut'}">${esc(r.protocol || '')}</span></td>
+            <td style="white-space:nowrap">${esc(r.quality && r.quality.quality && r.quality.quality.name || '')}</td>
+            <td style="white-space:nowrap">${fmtBytes(r.size)}</td>
+            <td>${r.protocol === 'torrent' ? `<span style="color:var(--ok)">${r.seeders != null ? r.seeders : '?'}</span> / ${r.leechers != null ? r.leechers : '?'}` : '–'}</td>
+            <td style="white-space:nowrap">${r.age != null ? r.age + ' d' : '–'}</td>
+            <td class="r"><button class="btn btn-sm btn-p" data-rgrab="${gi}">${icon('download')} Grab</button></td>
+          </tr>`;
+        }).join('')}</tbody></table>` : emptyBox('search', t('Keine Releases gefunden'));
+    };
+    m.bodyEl.innerHTML = `<input class="inp" id="relQ" placeholder="${t('Filter…')}" style="margin-bottom:12px">
+      <div class="hint" style="margin-bottom:10px">${tf('{0} Treffer', fmtNum(list.length))}</div>
+      <div id="relList" style="overflow-x:auto"></div>`;
+    draw('');
+    m.bodyEl.querySelector('#relQ').addEventListener('input', e => draw(e.target.value.toLowerCase()));
+    on(m.bodyEl, 'click', '[data-rgrab]', async (e, el2) => {
+      const r = list[+el2.dataset.rgrab];
+      el2.disabled = true;
+      try {
+        await API.post(svc, P + '/release', { guid: r.guid, indexerId: r.indexerId });
+        App.toast(t('Release an Download-Client übergeben'), 'ok');
+        el2.innerHTML = icon('check');
+      } catch (ex) { App.toast(ex.message, 'err'); el2.disabled = false; }
+    });
+  }
+  function wantedReleaseQuery(id) {
+    if (K === 'series') return 'episodeId=' + id;
+    if (K === 'movie') return 'movieId=' + id;
+    if (K === 'artist') return 'albumId=' + id;
+    return 'bookId=' + id;
+  }
+
   /* ---------- Einstieg ---------- */
   async function render(el) {
     if (!App.svcGuard(svc, el)) return;
@@ -228,6 +275,7 @@ function ArrModule(svc) {
             <td class="r" style="white-space:nowrap">
               <label class="switch" title="${t('Überwacht')}"><input type="checkbox" data-season="${sn.seasonNumber}" ${sn.monitored ? 'checked' : ''}><i></i></label>
               <button class="btn btn-ic btn-g" data-sseek="${sn.seasonNumber}" title="${t('Staffel suchen')}">${icon('search')}</button>
+              <button class="btn btn-ic btn-g" data-sint="${sn.seasonNumber}" title="${t('Releases anzeigen')}">${icon('list')}</button>
             </td></tr>`;
         }).join('') + '</tbody></table>';
     }
@@ -255,7 +303,14 @@ function ArrModule(svc) {
     const bRefresh = h(`<button class="btn">${icon('refresh')} ${t('Aktualisieren')}</button>`);
     const bEdit = h(`<button class="btn">${icon('edit')} ${t('Bearbeiten')}</button>`);
     const bDel = h(`<button class="btn btn-d">${icon('trash')} ${t('Löschen')}</button>`);
-    const m = App.modal({ title: titleOf(item), body, foot: [bDel, bEdit, bRefresh, bSearch], wide: true });
+    const foot = [bDel, bEdit, bRefresh];
+    if (K === 'movie') {
+      const bRel = h(`<button class="btn">${icon('list')} Releases</button>`);
+      bRel.addEventListener('click', () => releaseModal('movieId=' + item.id, titleOf(item)));
+      foot.push(bRel);
+    }
+    foot.push(bSearch);
+    const m = App.modal({ title: titleOf(item), body, foot, wide: true });
 
     /* Alben/Bücher nachladen */
     if (K === 'artist' || K === 'author') {
@@ -276,6 +331,7 @@ function ArrModule(svc) {
             <td class="r" style="white-space:nowrap">
               <label class="switch" title="${t('Überwacht')}"><input type="checkbox" data-child="${c.id}" ${c.monitored ? 'checked' : ''}><i></i></label>
               <button class="btn btn-ic btn-g" data-cseek="${c.id}" title="${t('Suchen')}">${icon('search')}</button>
+              <button class="btn btn-ic btn-g" data-cint="${c.id}" title="${t('Releases anzeigen')}">${icon('list')}</button>
             </td></tr>`;
         }).join('')}</tbody></table>` || emptyBox('inbox', t('Keine Einträge'));
       }).catch(e => {
@@ -295,6 +351,8 @@ function ArrModule(svc) {
         const key = K === 'artist' ? 'albumIds' : 'bookIds';
         cmd(name, { [key]: [+el2.dataset.cseek] }, t('Suche gestartet'));
       });
+      on(body, 'click', '[data-cint]', (e, el2) =>
+        releaseModal(wantedReleaseQuery(+el2.dataset.cint), titleOf(item)));
     }
 
     const sc = itemSearchCmd(item), rc = refreshCmd(item);
@@ -324,6 +382,8 @@ function ArrModule(svc) {
     });
     on(body, 'click', '[data-sseek]', (e, el2) =>
       cmd('SeasonSearch', { seriesId: item.id, seasonNumber: +el2.dataset.sseek }, t('Staffel-Suche gestartet')));
+    on(body, 'click', '[data-sint]', (e, el2) =>
+      releaseModal(`seriesId=${item.id}&seasonNumber=${el2.dataset.sint}`, `${titleOf(item)} · ${tf('Staffel {0}', el2.dataset.sint)}`));
   }
 
   /* ---------- Bearbeiten ---------- */
@@ -496,10 +556,51 @@ function ArrModule(svc) {
 
   /* ---------- Aktivität ---------- */
   async function renderAct(body) {
-    body.innerHTML = `<div class="card" id="qWrap"></div><div class="card" id="hWrap" style="margin-top:16px"></div>`;
+    body.innerHTML = `<div class="card" id="qWrap"></div><div class="card" id="hWrap" style="margin-top:16px"></div><div class="card" id="bWrap" style="margin-top:16px"></div>`;
     await drawQueue();
     await drawHistory();
+    await drawBlocklist();
     App.every(6000, () => drawQueue(true));
+  }
+
+  /* ---------- Blocklist ---------- */
+  async function drawBlocklist() {
+    const wrap = document.getElementById('bWrap');
+    if (!wrap) return;
+    try {
+      const b = await API.get(svc, `${P}/blocklist?page=1&pageSize=40&sortKey=date&sortDirection=descending`);
+      const recs = b.records || [];
+      const rows = recs.map(r => `<div class="list-item">
+        <span class="badge ${r.protocol === 'torrent' ? 'b-acc' : 'b-mut'}" style="flex:0 0 auto">${esc(r.protocol || '?')}</span>
+        <div class="li-main"><b class="wrapline" style="white-space:normal">${esc(r.sourceTitle || '?')}</b>
+          <span>${esc(r.indexer || '')}${r.date ? ' · ' + relTime(r.date) : ''}</span></div>
+        <button class="btn btn-ic btn-g" data-bdel="${r.id}" title="${t('Freigeben')}">${icon('x')}</button>
+      </div>`).join('');
+      wrap.innerHTML = `<div class="card-h"><h3>${t('Blockierte Releases')}</h3><span class="sub">${tf('{0} Einträge', fmtNum(b.totalRecords || 0))}</span>
+          <span class="spacer"></span>
+          ${recs.length ? `<button class="btn btn-sm btn-d" id="bClear">${icon('trash')} ${t('Angezeigte entfernen')}</button>` : ''}
+        </div>
+        <div class="card-b" style="padding-top:6px">${rows || emptyBox('check', t('Keine blockierten Releases'))}</div>`;
+      on(wrap, 'click', '[data-bdel]', async (e, el2) => {
+        try {
+          await API.del(svc, `${P}/blocklist/${el2.dataset.bdel}`);
+          App.toast(t('Aus Blocklist entfernt'), 'ok');
+          drawBlocklist();
+        } catch (ex) { App.toast(ex.message, 'err'); }
+      });
+      const bc = wrap.querySelector('#bClear');
+      if (bc) bc.addEventListener('click', async () => {
+        const r = await App.confirm({ title: t('Blocklist leeren'), msg: tf('{0} Einträge freigeben?', recs.length), okLabel: t('Entfernen'), danger: true });
+        if (!r) return;
+        try {
+          await API.raw('DELETE', API.p(svc, `${P}/blocklist/bulk`), { ids: recs.map(x => x.id) });
+          App.toast(t('Blocklist geleert'), 'ok');
+          drawBlocklist();
+        } catch (ex) { App.toast(ex.message, 'err'); }
+      });
+    } catch (e) {
+      wrap.innerHTML = `<div class="card-h"><h3>${t('Blockierte Releases')}</h3></div><div class="card-b">${errBox(e.message)}</div>`;
+    }
   }
 
   function queueTitle(r) {
@@ -596,6 +697,7 @@ function ArrModule(svc) {
       return `<div class="list-item">
         <div class="li-main"><b class="wrapline" style="white-space:normal">${esc(label)}</b><span>${esc(sub)}</span></div>
         <button class="btn btn-sm" data-ws="${r.id}">${icon('search')} ${t('Suchen')}</button>
+        <button class="btn btn-sm btn-g" data-wi="${r.id}" title="${t('Releases anzeigen')}">${icon('list')}</button>
       </div>`;
     }).join('');
     body.innerHTML = `<div class="card">
@@ -610,6 +712,11 @@ function ArrModule(svc) {
       else if (K === 'movie') cmd('MoviesSearch', { movieIds: [id] });
       else if (K === 'artist') cmd('AlbumSearch', { albumIds: [id] });
       else cmd('BookSearch', { bookIds: [id] });
+    });
+    on(body, 'click', '[data-wi]', (e, el2) => {
+      const rec = (w.records || []).find(x => x.id === +el2.dataset.wi);
+      const label = rec ? (rec.title || '') : '';
+      releaseModal(wantedReleaseQuery(+el2.dataset.wi), label);
     });
     body.querySelector('#wAll').addEventListener('click', async () => {
       const r = await App.confirm({ title: t('Alle fehlenden suchen'), msg: t('Das kann viele Indexer-Anfragen auslösen. Fortfahren?'), okLabel: t('Suchen') });

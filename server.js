@@ -17,11 +17,21 @@ const crypto = require('crypto');
 const ROOT = __dirname;
 const PUB = path.join(ROOT, 'public');
 const CONFIG_PATH = path.join(ROOT, 'config.json');
+const STATE_PATH = path.join(ROOT, 'notify-state.json');
 const SESS_TTL = 7 * 24 * 3600 * 1000; // 7 Tage
+const PKG = require('./package.json');
+const REPO = 'zerqpain-oss/nebula-panel';
 
 const DEFAULTS = {
-  panel: { name: 'Nebula', port: 8484 },
+  panel: { name: 'Nebula', port: 8484, icalToken: null },
   auth: { hash: null, salt: null },
+  notify: {
+    telegram: { enabled: false, botToken: '', chatId: '' },
+    discord:  { enabled: false, webhookUrl: '' },
+    ntfy:     { enabled: false, server: 'https://ntfy.sh', topic: '' },
+    events: { imported: true, failed: true, health: true, disk: true, grabbed: false },
+    diskThreshold: 90
+  },
   services: {
     sonarr:   { enabled: false, url: 'http://localhost:8989',  apiKey: '' },
     radarr:   { enabled: false, url: 'http://localhost:7878',  apiKey: '' },
@@ -56,6 +66,19 @@ let config = loadConfig();
 
 function saveConfig() {
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+}
+
+/* iCal-Token beim ersten Start erzeugen */
+if (!config.panel.icalToken) {
+  config.panel.icalToken = crypto.randomBytes(12).toString('hex');
+  saveConfig();
+}
+
+/* Zustand des Benachrichtigungs-Watchers (verhindert Doppel-Meldungen) */
+let nstate = { lastHist: {}, health: {}, disks: {} };
+try { nstate = Object.assign(nstate, JSON.parse(fs.readFileSync(STATE_PATH, 'utf8'))); } catch (e) {}
+function saveState() {
+  try { fs.writeFileSync(STATE_PATH, JSON.stringify(nstate)); } catch (e) {}
 }
 
 /* ---------- Auth ---------- */
@@ -251,11 +274,203 @@ async function testService(type, url, apiKey) {
   throw new Error('Unbekannter Diensttyp');
 }
 
+/* ---------- Interner API-Zugriff (für Watcher & iCal) ---------- */
+const ARR_APIS = { sonarr: '/api/v3', radarr: '/api/v3', lidarr: '/api/v1', readarr: '/api/v1' };
+const SVC_NAMES = { sonarr: 'Sonarr', radarr: 'Radarr', lidarr: 'Lidarr', readarr: 'Readarr' };
+
+async function arrGet(svcName, apiPath) {
+  const svc = config.services[svcName];
+  if (!svc || !svc.enabled || !svc.url || !svc.apiKey) throw new Error('nicht konfiguriert');
+  const url = svc.url.replace(/\/+$/, '') + apiPath + (apiPath.includes('?') ? '&' : '?') + 'apikey=' + encodeURIComponent(svc.apiKey);
+  const r = await fetch(url, { headers: { 'X-Api-Key': svc.apiKey, Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+/* ---------- Benachrichtigungen ---------- */
+function anyProviderEnabled() {
+  const n = config.notify || {};
+  return !!((n.telegram && n.telegram.enabled && n.telegram.botToken && n.telegram.chatId) ||
+    (n.discord && n.discord.enabled && n.discord.webhookUrl) ||
+    (n.ntfy && n.ntfy.enabled && n.ntfy.topic));
+}
+
+async function sendNotification(title, message) {
+  const n = config.notify || {};
+  const jobs = [];
+  const opts = body => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(10000) });
+  if (n.telegram && n.telegram.enabled && n.telegram.botToken && n.telegram.chatId) {
+    jobs.push(fetch(`https://api.telegram.org/bot${n.telegram.botToken}/sendMessage`,
+      opts({ chat_id: n.telegram.chatId, text: title + '\n' + message })));
+  }
+  if (n.discord && n.discord.enabled && n.discord.webhookUrl) {
+    jobs.push(fetch(n.discord.webhookUrl, opts({ content: '**' + title + '**\n' + message })));
+  }
+  if (n.ntfy && n.ntfy.enabled && n.ntfy.topic) {
+    const base = (n.ntfy.server || 'https://ntfy.sh').replace(/\/+$/, '');
+    jobs.push(fetch(`${base}/${encodeURIComponent(n.ntfy.topic)}?title=${encodeURIComponent(title)}`,
+      { method: 'POST', body: message, signal: AbortSignal.timeout(10000) }));
+  }
+  const results = await Promise.allSettled(jobs);
+  const failed = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok)).length;
+  return { sent: results.length - failed, failed };
+}
+
+const NOTIFY_EVENTS = {
+  downloadFolderImported: 'imported', downloadImported: 'imported', trackFileImported: 'imported',
+  bookFileImported: 'imported', seriesFolderImported: 'imported', movieFolderImported: 'imported',
+  downloadFailed: 'failed', grabbed: 'grabbed'
+};
+const NOTIFY_LABELS = { imported: 'Import abgeschlossen', failed: 'Download fehlgeschlagen', grabbed: 'Release geholt' };
+
+async function notifyTick() {
+  if (!anyProviderEnabled()) return;
+  const n = config.notify;
+  let dirty = false;
+  for (const [svcName, api] of Object.entries(ARR_APIS)) {
+    const svc = config.services[svcName];
+    if (!svc || !svc.enabled || !svc.apiKey) continue;
+    /* Historie: Import fertig / fehlgeschlagen / geholt */
+    try {
+      const hist = await arrGet(svcName, api + '/history?page=1&pageSize=25&sortKey=date&sortDirection=descending');
+      if (!nstate.lastHist[svcName]) {
+        nstate.lastHist[svcName] = new Date().toISOString(); /* Erster Lauf: kein Backlog melden */
+        dirty = true;
+      } else {
+        const lastT = new Date(nstate.lastHist[svcName]).getTime();
+        let newest = lastT;
+        for (const rec of (hist.records || [])) {
+          const rt = new Date(rec.date).getTime();
+          if (!rt || rt <= lastT) continue;
+          if (rt > newest) newest = rt;
+          const cat = NOTIFY_EVENTS[rec.eventType];
+          if (!cat || !n.events[cat]) continue;
+          await sendNotification(`${SVC_NAMES[svcName]} · ${NOTIFY_LABELS[cat]}`, rec.sourceTitle || '?');
+        }
+        if (newest > lastT) { nstate.lastHist[svcName] = new Date(newest).toISOString(); dirty = true; }
+      }
+    } catch (e) {}
+    /* Health: nur NEUE Meldungen */
+    if (n.events.health) {
+      try {
+        const hs = await arrGet(svcName, api + '/health');
+        const cur = (hs || []).map(x => x.message);
+        const prev = new Set(nstate.health[svcName] || []);
+        for (const m of cur) {
+          if (!prev.has(m)) await sendNotification(`${SVC_NAMES[svcName]} · Systemwarnung`, m);
+        }
+        nstate.health[svcName] = cur;
+        dirty = true;
+      } catch (e) {}
+    }
+    /* Speicherplatz */
+    if (n.events.disk) {
+      try {
+        const ds = await arrGet(svcName, api + '/diskspace');
+        for (const d of (ds || [])) {
+          if (!d.totalSpace) continue;
+          const pct = Math.round((d.totalSpace - d.freeSpace) / d.totalSpace * 100);
+          const lastAlert = nstate.disks[d.path] || 0;
+          if (pct >= (n.diskThreshold || 90) && Date.now() - lastAlert > 24 * 3600 * 1000) {
+            const freeGb = (d.freeSpace / 1024 / 1024 / 1024).toFixed(1);
+            await sendNotification('Speicherplatz knapp', `${d.path}: ${pct}% belegt, noch ${freeGb} GB frei`);
+            nstate.disks[d.path] = Date.now();
+            dirty = true;
+          }
+        }
+      } catch (e) {}
+    }
+  }
+  if (dirty) saveState();
+}
+setInterval(() => notifyTick().catch(() => {}), 3 * 60 * 1000).unref();
+setTimeout(() => notifyTick().catch(() => {}), 20 * 1000).unref();
+
+/* ---------- iCal-Export ---------- */
+function icsEscape(s) {
+  return String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+}
+function icsDateTime(d) { return new Date(d).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, ''); }
+function icsDay(d) { return new Date(d).toISOString().slice(0, 10).replace(/-/g, ''); }
+
+async function serveIcal(req, res, u) {
+  const tok = u.searchParams.get('token');
+  if (!config.panel.icalToken || tok !== config.panel.icalToken) {
+    res.writeHead(403); return res.end('Forbidden');
+  }
+  const start = new Date(Date.now() - 7 * 86400000);
+  const end = new Date(Date.now() + 30 * 86400000);
+  const range = `start=${start.toISOString()}&end=${end.toISOString()}`;
+  const ev = [];
+  try {
+    (await arrGet('sonarr', `/api/v3/calendar?${range}&includeSeries=true`)).forEach(e => {
+      if (!e.airDateUtc) return;
+      const s = e.series || {};
+      ev.push({
+        uid: `sonarr-${e.id}`, allDay: false, dt: e.airDateUtc,
+        mins: s.runtime || 45,
+        sum: `${s.title || '?'} S${String(e.seasonNumber).padStart(2, '0')}E${String(e.episodeNumber).padStart(2, '0')}${e.title ? ' – ' + e.title : ''}`
+      });
+    });
+  } catch (e) {}
+  try {
+    (await arrGet('radarr', `/api/v3/calendar?${range}`)).forEach(m => {
+      [['Kino', m.inCinemas], ['Digital', m.digitalRelease], ['Disc', m.physicalRelease]].forEach(x => {
+        if (x[1] && new Date(x[1]) >= start && new Date(x[1]) < end) {
+          ev.push({ uid: `radarr-${m.id}-${x[0]}`, allDay: true, dt: x[1], sum: `${m.title} (${x[0]}-Release)` });
+        }
+      });
+    });
+  } catch (e) {}
+  try {
+    (await arrGet('lidarr', `/api/v1/calendar?${range}&includeArtist=true`)).forEach(a => {
+      if (a.releaseDate) ev.push({ uid: `lidarr-${a.id}`, allDay: true, dt: a.releaseDate, sum: `${a.artist ? a.artist.artistName + ' – ' : ''}${a.title} (Album)` });
+    });
+  } catch (e) {}
+  try {
+    (await arrGet('readarr', `/api/v1/calendar?${range}&includeAuthor=true`)).forEach(b => {
+      if (b.releaseDate) ev.push({ uid: `readarr-${b.id}`, allDay: true, dt: b.releaseDate, sum: `${b.author ? b.author.authorName + ' – ' : ''}${b.title} (Buch)` });
+    });
+  } catch (e) {}
+
+  const now = icsDateTime(new Date());
+  const L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Nebula Panel//DE', 'CALSCALE:GREGORIAN',
+    'X-WR-CALNAME:' + icsEscape(config.panel.name)];
+  ev.forEach(e => {
+    L.push('BEGIN:VEVENT', `UID:${e.uid}@nebula-panel`, 'DTSTAMP:' + now);
+    if (e.allDay) L.push('DTSTART;VALUE=DATE:' + icsDay(e.dt));
+    else {
+      L.push('DTSTART:' + icsDateTime(e.dt));
+      L.push('DTEND:' + icsDateTime(new Date(new Date(e.dt).getTime() + (e.mins || 45) * 60000)));
+    }
+    L.push('SUMMARY:' + icsEscape(e.sum), 'END:VEVENT');
+  });
+  L.push('END:VCALENDAR');
+  res.writeHead(200, { 'Content-Type': 'text/calendar; charset=utf-8', 'Cache-Control': 'no-cache' });
+  res.end(L.join('\r\n'));
+}
+
+/* ---------- Update-Check ---------- */
+let verCache = { t: 0, latest: null };
+async function latestVersion() {
+  if (Date.now() - verCache.t < 6 * 3600 * 1000) return verCache.latest;
+  let latest = null;
+  try {
+    const r = await fetch(`https://raw.githubusercontent.com/${REPO}/main/package.json`, { signal: AbortSignal.timeout(8000) });
+    if (r.ok) latest = (await r.json()).version || null;
+  } catch (e) {}
+  verCache = { t: Date.now(), latest };
+  return latest;
+}
+
 /* ---------- Router ---------- */
 const server = http.createServer(async (req, res) => {
   try {
     const u = new URL(req.url, 'http://localhost');
     const p = u.pathname;
+
+    /* --- iCal (Token-geschützt, ohne Session nutzbar) --- */
+    if (p === '/calendar.ics' && req.method === 'GET') return serveIcal(req, res, u);
 
     /* --- API & Proxy --- */
     if (p.startsWith('/api/') || p.startsWith('/proxy/')) {
@@ -310,7 +525,25 @@ const server = http.createServer(async (req, res) => {
       }
 
       if (p === '/api/config' && req.method === 'GET') {
-        return sendJSON(res, 200, { panel: { name: config.panel.name }, services: config.services });
+        return sendJSON(res, 200, {
+          panel: { name: config.panel.name, icalToken: config.panel.icalToken },
+          services: config.services,
+          notify: config.notify
+        });
+      }
+
+      if (p === '/api/version' && req.method === 'GET') {
+        const latest = await latestVersion();
+        return sendJSON(res, 200, {
+          current: PKG.version, latest,
+          updateAvailable: !!latest && latest !== PKG.version
+        });
+      }
+
+      if (p === '/api/notify/test' && req.method === 'POST') {
+        if (!anyProviderEnabled()) return sendJSON(res, 200, { ok: false, error: 'Kein Benachrichtigungs-Provider aktiviert' });
+        const r = await sendNotification(config.panel.name + ' – Test', 'Testbenachrichtigung: Die Verbindung funktioniert!');
+        return sendJSON(res, 200, { ok: r.sent > 0, sent: r.sent, failed: r.failed, error: r.sent === 0 ? 'Senden fehlgeschlagen – Zugangsdaten prüfen' : undefined });
       }
 
       if (p === '/api/config' && req.method === 'POST') {
@@ -327,6 +560,25 @@ const server = http.createServer(async (req, res) => {
               url: String(s.url || '').trim().replace(/\/+$/, ''),
               apiKey: String(s.apiKey || '').trim()
             };
+          }
+        }
+        if (b.notify && typeof b.notify === 'object') {
+          const n = config.notify;
+          for (const prov of ['telegram', 'discord', 'ntfy']) {
+            const src = b.notify[prov];
+            if (!src) continue;
+            for (const f of Object.keys(n[prov])) {
+              if (f === 'enabled') n[prov].enabled = !!src.enabled;
+              else if (src[f] !== undefined) n[prov][f] = String(src[f]).trim();
+            }
+          }
+          if (b.notify.events && typeof b.notify.events === 'object') {
+            for (const f of Object.keys(n.events)) {
+              if (f in b.notify.events) n.events[f] = !!b.notify.events[f];
+            }
+          }
+          if (b.notify.diskThreshold !== undefined) {
+            n.diskThreshold = Math.min(99, Math.max(50, +b.notify.diskThreshold || 90));
           }
         }
         saveConfig();
