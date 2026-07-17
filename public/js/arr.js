@@ -1,52 +1,99 @@
 'use strict';
-/* ============ Gemeinsames Modul für Sonarr & Radarr ============ */
+/* ============ Gemeinsames Modul für Sonarr, Radarr, Lidarr & Readarr ============ */
+
+const ARR_DEFS = {
+  sonarr:  { api: '/api/v3', kind: 'series', items: '/series' },
+  radarr:  { api: '/api/v3', kind: 'movie',  items: '/movie'  },
+  lidarr:  { api: '/api/v1', kind: 'artist', items: '/artist' },
+  readarr: { api: '/api/v1', kind: 'author', items: '/author' }
+};
 
 function ArrModule(svc) {
-  const isS = svc === 'sonarr';
+  const D = ARR_DEFS[svc];
   const M = SVC_META[svc];
-  const P = '/api/v3';
-  const ITEMS = isS ? '/series' : '/movie';
-  const T = isS
-    ? { one: t('Serie'), many: t('Serien'), searchCmd: 'SeriesSearch', missingCmd: 'MissingEpisodeSearch', refreshCmd: 'RefreshSeries' }
-    : { one: t('Film'), many: t('Filme'), searchCmd: 'MoviesSearch', missingCmd: 'MissingMoviesSearch', refreshCmd: 'RefreshMovie' };
+  const P = D.api;
+  const K = D.kind;
+  const ITEMS = D.items;
 
-  const st = { tab: 'lib', items: [], profiles: null, roots: null, sub: 'profiles', libFilter: '', libSort: 'title' };
+  const KINDS = {
+    series: { one: t('Serie'), many: t('Serien'), addPh: t('Serie suchen – Titel eingeben und Enter drücken…') },
+    movie:  { one: t('Film'), many: t('Filme'), addPh: t('Film suchen – Titel eingeben und Enter drücken…') },
+    artist: { one: t('Künstler'), many: t('Künstler'), addPh: t('Künstler suchen – Namen eingeben und Enter drücken…') },
+    author: { one: t('Autor'), many: t('Autoren'), addPh: t('Autor suchen – Namen eingeben und Enter drücken…') }
+  };
+  const T = KINDS[K];
+  const hasMetaProfile = (K === 'artist' || K === 'author');
+
+  const st = { tab: 'lib', items: [], profiles: null, metas: null, roots: null, sub: 'profiles', libFilter: '', libSort: 'title' };
 
   const NAMING_LABELS = {
-    renameEpisodes: 'Episoden umbenennen', renameMovies: 'Filme umbenennen',
-    replaceIllegalCharacters: 'Ungültige Zeichen ersetzen', colonReplacementFormat: 'Doppelpunkt-Ersetzung',
-    standardEpisodeFormat: 'Standard-Episodenformat', dailyEpisodeFormat: 'Daily-Episodenformat',
-    animeEpisodeFormat: 'Anime-Episodenformat', seriesFolderFormat: 'Serienordner-Format',
-    seasonFolderFormat: 'Staffelordner-Format', specialsFolderFormat: 'Specials-Ordner-Format',
-    multiEpisodeStyle: 'Multi-Episoden-Stil', standardMovieFormat: 'Standard-Filmformat',
-    movieFolderFormat: 'Filmordner-Format', includeQuality: 'Qualität einfügen', includeSeriesTitle: 'Serientitel einfügen',
-    includeEpisodeTitle: 'Episodentitel einfügen', separator: 'Trennzeichen', numberStyle: 'Nummernstil'
+    renameEpisodes: 'Episoden umbenennen', renameMovies: 'Filme umbenennen', renameTracks: 'Titel umbenennen',
+    renameBooks: 'Bücher umbenennen', replaceIllegalCharacters: 'Ungültige Zeichen ersetzen',
+    colonReplacementFormat: 'Doppelpunkt-Ersetzung', standardEpisodeFormat: 'Standard-Episodenformat',
+    dailyEpisodeFormat: 'Daily-Episodenformat', animeEpisodeFormat: 'Anime-Episodenformat',
+    seriesFolderFormat: 'Serienordner-Format', seasonFolderFormat: 'Staffelordner-Format',
+    specialsFolderFormat: 'Specials-Ordner-Format', multiEpisodeStyle: 'Multi-Episoden-Stil',
+    standardMovieFormat: 'Standard-Filmformat', movieFolderFormat: 'Filmordner-Format',
+    artistFolderFormat: 'Künstlerordner-Format', standardTrackFormat: 'Standard-Titelformat',
+    multiDiscTrackFormat: 'Multi-Disc-Titelformat', authorFolderFormat: 'Autorordner-Format',
+    standardBookFormat: 'Standard-Buchformat'
   };
   const MEDIA_LABELS = {
     autoUnmonitorPreviouslyDownloadedEpisodes: 'Gelöschte Episoden auf „unüberwacht"',
     autoUnmonitorPreviouslyDownloadedMovies: 'Gelöschte Filme auf „unüberwacht"',
     recycleBin: 'Papierkorb-Pfad', recycleBinCleanupDays: 'Papierkorb aufräumen (Tage)',
     downloadPropersAndRepacks: 'Propers & Repacks laden', createEmptySeriesFolders: 'Leere Serienordner anlegen',
-    createEmptyMovieFolders: 'Leere Filmordner anlegen', deleteEmptyFolders: 'Leere Ordner löschen',
+    createEmptyMovieFolders: 'Leere Filmordner anlegen', createEmptyArtistFolders: 'Leere Künstlerordner anlegen',
+    createEmptyAuthorFolders: 'Leere Autorordner anlegen', deleteEmptyFolders: 'Leere Ordner löschen',
     fileDate: 'Dateidatum setzen', rescanAfterRefresh: 'Rescan nach Aktualisierung',
     setPermissionsLinux: 'Linux-Berechtigungen setzen', chmodFolder: 'chmod (Ordner)', chownGroup: 'chown-Gruppe',
     episodeTitleRequired: 'Episodentitel erforderlich', skipFreeSpaceCheckWhenImporting: 'Speicherplatz-Check überspringen',
     minimumFreeSpaceWhenImporting: 'Min. freier Speicher (MB)', copyUsingHardlinks: 'Hardlinks statt Kopieren',
     importExtraFiles: 'Zusatzdateien importieren', extraFileExtensions: 'Zusatzdatei-Endungen',
-    enableMediaInfo: 'MediaInfo aktivieren'
+    enableMediaInfo: 'MediaInfo aktivieren', watchLibraryForChanges: 'Bibliothek auf Änderungen überwachen'
   };
   const HIST_EVENTS = {
     grabbed: [t('Geholt'), 'b-acc'], downloadFolderImported: [t('Importiert'), 'b-ok'],
-    downloadFailed: [t('Fehlgeschlagen'), 'b-err'], episodeFileDeleted: [t('Datei gelöscht'), 'b-warn'],
-    movieFileDeleted: [t('Datei gelöscht'), 'b-warn'], episodeFileRenamed: [t('Umbenannt'), 'b-mut'],
-    movieFileRenamed: [t('Umbenannt'), 'b-mut'], downloadIgnored: [t('Ignoriert'), 'b-mut'],
+    downloadImported: [t('Importiert'), 'b-ok'], trackFileImported: [t('Importiert'), 'b-ok'],
+    bookFileImported: [t('Importiert'), 'b-ok'], downloadFailed: [t('Fehlgeschlagen'), 'b-err'],
+    episodeFileDeleted: [t('Datei gelöscht'), 'b-warn'], movieFileDeleted: [t('Datei gelöscht'), 'b-warn'],
+    trackFileDeleted: [t('Datei gelöscht'), 'b-warn'], bookFileDeleted: [t('Datei gelöscht'), 'b-warn'],
+    episodeFileRenamed: [t('Umbenannt'), 'b-mut'], movieFileRenamed: [t('Umbenannt'), 'b-mut'],
+    trackFileRenamed: [t('Umbenannt'), 'b-mut'], downloadIgnored: [t('Ignoriert'), 'b-mut'],
     seriesFolderImported: [t('Ordner importiert'), 'b-ok'], movieFolderImported: [t('Ordner importiert'), 'b-ok']
   };
 
-  /* ---------- Helfer ---------- */
+  /* ---------- Kind-spezifische Helfer ---------- */
+  function titleOf(i) { return i.title || i.artistName || i.authorName || '?'; }
+  function sortKeyOf(i) { return i.sortTitle || i.sortName || titleOf(i); }
+  function itemSearchCmd(item) {
+    if (K === 'series') return ['SeriesSearch', { seriesId: item.id }];
+    if (K === 'movie') return ['MoviesSearch', { movieIds: [item.id] }];
+    if (K === 'artist') return ['ArtistSearch', { artistId: item.id }];
+    return ['AuthorSearch', { authorId: item.id }];
+  }
+  function refreshCmd(item) {
+    if (K === 'series') return ['RefreshSeries', { seriesId: item.id }];
+    if (K === 'movie') return ['RefreshMovie', { movieIds: [item.id] }];
+    if (K === 'artist') return ['RefreshArtist', { artistId: item.id }];
+    return ['RefreshAuthor', { authorId: item.id }];
+  }
+  const MISSING_ALL = { series: 'MissingEpisodeSearch', movie: 'MissingMoviesSearch', artist: 'MissingAlbumSearch', author: 'MissingBookSearch' }[K];
+
+  function libSub(item) {
+    const s = item.statistics || {};
+    if (K === 'series') return s.episodeCount != null ? `${s.episodeFileCount}/${s.episodeCount} Ep.` : '';
+    if (K === 'movie') return item.hasFile ? fmtBytes(sizeOf(item)) : t('Fehlt');
+    if (K === 'artist') return s.albumCount != null ? tf('{0} Alben', s.albumCount) + (s.sizeOnDisk ? ' · ' + fmtBytes(s.sizeOnDisk) : '') : '';
+    return s.bookCount != null ? tf('{0} Bücher', s.bookCount) : '';
+  }
+
   async function ensureMeta(force) {
     if (force || !st.profiles) st.profiles = await API.get(svc, P + '/qualityprofile');
     if (force || !st.roots) st.roots = await API.get(svc, P + '/rootfolder');
+    if (hasMetaProfile && (force || !st.metas)) {
+      st.metas = await API.get(svc, P + '/metadataprofile').catch(() => []);
+    }
   }
   function profileName(id) {
     const p = (st.profiles || []).find(x => x.id === id);
@@ -58,7 +105,6 @@ function ArrModule(svc) {
     const remote = item.remotePoster || img.remoteUrl || '';
     return { src: local || remote, alt: local ? remote : '' };
   }
-  /* Poster-Tag mit Fallback: erst lokales Bild (Proxy), sonst Online-Poster (TMDB/TVDB) */
   function posterImg(item, style) {
     const p = posterOf(item);
     if (!p.src) return '';
@@ -123,21 +169,19 @@ function ArrModule(svc) {
     const draw = () => {
       let arr = [...st.items];
       const q = st.libFilter.toLowerCase();
-      if (q) arr = arr.filter(i => (i.title || '').toLowerCase().includes(q));
-      if (st.libSort === 'title') arr.sort((a, b) => (a.sortTitle || a.title) < (b.sortTitle || b.title) ? -1 : 1);
+      if (q) arr = arr.filter(i => titleOf(i).toLowerCase().includes(q));
+      if (st.libSort === 'title') arr.sort((a, b) => sortKeyOf(a) < sortKeyOf(b) ? -1 : 1);
       else if (st.libSort === 'added') arr.sort((a, b) => new Date(b.added) - new Date(a.added));
       else arr.sort((a, b) => sizeOf(b) - sizeOf(a));
       grid.innerHTML = arr.map(item => {
-        const sub = isS
-          ? `${item.statistics ? item.statistics.episodeFileCount + '/' + item.statistics.episodeCount + ' Ep.' : ''}`
-          : (item.hasFile ? fmtBytes(sizeOf(item)) : t('Fehlt'));
-        return `<div class="poster" data-id="${item.id}" title="${esc(item.title)}">
-          <div class="p-fall">${esc(item.title)}</div>
+        const sub = libSub(item);
+        return `<div class="poster" data-id="${item.id}" title="${esc(titleOf(item))}">
+          <div class="p-fall">${esc(titleOf(item))}</div>
           ${posterImg(item)}
-          <div class="p-tl">${!isS && !item.hasFile && item.monitored ? `<span class="badge b-warn">${t('Fehlt')}</span>` : ''}</div>
+          <div class="p-tl">${K === 'movie' && !item.hasFile && item.monitored ? `<span class="badge b-warn">${t('Fehlt')}</span>` : ''}</div>
           <div class="p-tr"><span class="badge ${item.monitored ? 'b-acc' : 'b-mut'}" data-mon="${item.id}" title="${t('Überwachung umschalten')}" style="cursor:pointer">${icon('bookmark')}</span></div>
           <div class="p-grad"></div>
-          <div class="p-info"><b>${esc(item.title)}</b><span>${item.year || ''}${sub ? ' · ' + esc(sub) : ''}</span></div>
+          <div class="p-info"><b>${esc(titleOf(item))}</b><span>${item.year || ''}${sub ? ' · ' + esc(sub) : ''}</span></div>
         </div>`;
       }).join('') || emptyBox('inbox', t('Keine Treffer'));
     };
@@ -152,7 +196,7 @@ function ArrModule(svc) {
       item.monitored = !item.monitored;
       try {
         await API.put(svc, P + ITEMS + '/' + item.id, item);
-        App.toast(`${item.title}: ${item.monitored ? t('überwacht') : t('nicht mehr überwacht')}`, 'ok');
+        App.toast(`${titleOf(item)}: ${item.monitored ? t('überwacht') : t('nicht mehr überwacht')}`, 'ok');
         draw();
       } catch (ex) { item.monitored = !item.monitored; App.toast(ex.message, 'err'); }
     });
@@ -165,18 +209,17 @@ function ArrModule(svc) {
 
   /* ---------- Detail ---------- */
   function detailModal(item) {
-    const stats = item.statistics || {};
     const facts = [
       [t('Status'), item.status], [t('Jahr'), item.year],
-      [isS ? t('Sender') : t('Studio'), isS ? item.network : item.studio],
+      [K === 'series' ? t('Sender') : t('Studio'), K === 'series' ? item.network : item.studio],
       [t('Qualitätsprofil'), profileName(item.qualityProfileId)],
       [t('Pfad'), item.path], [t('Größe'), fmtBytes(sizeOf(item))],
       [t('Genres'), (item.genres || []).slice(0, 4).join(', ')]
-    ].filter(f => f[1] !== undefined && f[1] !== null && f[1] !== '');
+    ].filter(f => f[1] !== undefined && f[1] !== null && f[1] !== '' && f[1] !== '0 B');
 
-    let seasonsHtml = '';
-    if (isS && Array.isArray(item.seasons)) {
-      seasonsHtml = `<div class="sec-title">${t('Staffeln')}</div><table class="tbl"><tbody>` +
+    let childHtml = '';
+    if (K === 'series' && Array.isArray(item.seasons)) {
+      childHtml = `<div class="sec-title">${t('Staffeln')}</div><table class="tbl"><tbody>` +
         item.seasons.slice().reverse().map(sn => {
           const ss = sn.statistics || {};
           return `<tr>
@@ -188,12 +231,15 @@ function ArrModule(svc) {
             </td></tr>`;
         }).join('') + '</tbody></table>';
     }
-    if (!isS && item.movieFile) {
+    if (K === 'movie' && item.movieFile) {
       const mf = item.movieFile;
-      seasonsHtml = `<div class="sec-title">${t('Datei')}</div>
+      childHtml = `<div class="sec-title">${t('Datei')}</div>
         <div class="kv"><span>${t('Qualität')}</span><b>${esc(mf.quality && mf.quality.quality && mf.quality.quality.name || '?')}</b></div>
         <div class="kv"><span>${t('Größe')}</span><b>${fmtBytes(mf.size)}</b></div>
         <div class="kv"><span>${t('Pfad')}</span><span class="mono wrapline" style="color:var(--txt)">${esc(mf.relativePath || '')}</span></div>`;
+    }
+    if (K === 'artist' || K === 'author') {
+      childHtml = `<div class="sec-title">${K === 'artist' ? t('Alben') : t('Bücher')}</div><div id="childList">${spinner()}</div>`;
     }
 
     const body = h(`<div>
@@ -203,27 +249,68 @@ function ArrModule(svc) {
           <p style="color:var(--txt2);font-size:13px;margin-bottom:10px">${esc((item.overview || '').slice(0, 340))}${(item.overview || '').length > 340 ? '…' : ''}</p>
           ${facts.map(f => `<div class="kv"><span>${esc(f[0])}</span><span class="wrapline" style="text-align:right">${esc(String(f[1]))}</span></div>`).join('')}
         </div>
-      </div>${seasonsHtml}</div>`);
+      </div>${childHtml}</div>`);
 
     const bSearch = h(`<button class="btn btn-p">${icon('search')} ${t('Suche starten')}</button>`);
     const bRefresh = h(`<button class="btn">${icon('refresh')} ${t('Aktualisieren')}</button>`);
     const bEdit = h(`<button class="btn">${icon('edit')} ${t('Bearbeiten')}</button>`);
     const bDel = h(`<button class="btn btn-d">${icon('trash')} ${t('Löschen')}</button>`);
-    const m = App.modal({ title: item.title, body, foot: [bDel, bEdit, bRefresh, bSearch], wide: true });
+    const m = App.modal({ title: titleOf(item), body, foot: [bDel, bEdit, bRefresh, bSearch], wide: true });
 
-    bSearch.addEventListener('click', () => cmd(T.searchCmd, isS ? { seriesId: item.id } : { movieIds: [item.id] }, t('Suche gestartet')));
-    bRefresh.addEventListener('click', () => cmd(T.refreshCmd, isS ? { seriesId: item.id } : { movieIds: [item.id] }, t('Aktualisierung gestartet')));
+    /* Alben/Bücher nachladen */
+    if (K === 'artist' || K === 'author') {
+      const listPath = K === 'artist' ? `/album?artistId=${item.id}` : `/book?authorId=${item.id}`;
+      API.get(svc, P + listPath).then(childs => {
+        childs.sort((a, b) => new Date(b.releaseDate || 0) - new Date(a.releaseDate || 0));
+        const wrap = body.querySelector('#childList');
+        if (!wrap) return;
+        wrap.innerHTML = `<table class="tbl"><tbody>${childs.map(c => {
+          const cs = c.statistics || {};
+          const done = K === 'artist'
+            ? (cs.trackCount > 0 && cs.trackFileCount >= cs.trackCount)
+            : (cs.bookFileCount > 0);
+          return `<tr>
+            <td class="td-main wrapline">${esc(c.title)}</td>
+            <td class="td-sub" style="white-space:nowrap">${c.releaseDate ? new Date(c.releaseDate).getFullYear() : ''}${K === 'artist' && cs.trackCount != null ? ` · ${cs.trackFileCount}/${cs.trackCount}` : ''}</td>
+            <td>${done ? `<span class="badge b-ok">${t('Vorhanden')}</span>` : ''}</td>
+            <td class="r" style="white-space:nowrap">
+              <label class="switch" title="${t('Überwacht')}"><input type="checkbox" data-child="${c.id}" ${c.monitored ? 'checked' : ''}><i></i></label>
+              <button class="btn btn-ic btn-g" data-cseek="${c.id}" title="${t('Suchen')}">${icon('search')}</button>
+            </td></tr>`;
+        }).join('')}</tbody></table>` || emptyBox('inbox', t('Keine Einträge'));
+      }).catch(e => {
+        const wrap = body.querySelector('#childList');
+        if (wrap) wrap.innerHTML = errBox(e.message);
+      });
+      on(body, 'change', '[data-child]', async (e, el2) => {
+        const path = K === 'artist' ? '/album/monitor' : '/book/monitor';
+        const key = K === 'artist' ? 'albumIds' : 'bookIds';
+        try {
+          await API.put(svc, P + path, { [key]: [+el2.dataset.child], monitored: el2.checked });
+          App.toast(t('Gespeichert'), 'ok');
+        } catch (ex) { App.toast(ex.message, 'err'); el2.checked = !el2.checked; }
+      });
+      on(body, 'click', '[data-cseek]', (e, el2) => {
+        const name = K === 'artist' ? 'AlbumSearch' : 'BookSearch';
+        const key = K === 'artist' ? 'albumIds' : 'bookIds';
+        cmd(name, { [key]: [+el2.dataset.cseek] }, t('Suche gestartet'));
+      });
+    }
+
+    const sc = itemSearchCmd(item), rc = refreshCmd(item);
+    bSearch.addEventListener('click', () => cmd(sc[0], sc[1], t('Suche gestartet')));
+    bRefresh.addEventListener('click', () => cmd(rc[0], rc[1], t('Aktualisierung gestartet')));
     bEdit.addEventListener('click', () => { m.close(); editModal(item); });
     bDel.addEventListener('click', async () => {
       const r = await App.confirm({
-        title: tf('{0} löschen', T.one), msg: tf('„{0}" wirklich aus {1} entfernen?', item.title, M.name),
+        title: tf('{0} löschen', T.one), msg: tf('„{0}" wirklich aus {1} entfernen?', titleOf(item), M.name),
         okLabel: t('Löschen'), danger: true,
         checks: [{ id: 'files', label: t('Dateien von der Festplatte löschen'), checked: false }]
       });
       if (!r) return;
       try {
         await API.del(svc, P + ITEMS + '/' + item.id + '?deleteFiles=' + !!r.files + '&addImportExclusion=false');
-        App.toast(tf('{0} gelöscht', item.title), 'ok');
+        App.toast(tf('{0} gelöscht', titleOf(item)), 'ok');
         m.close();
         if (st.tab === 'lib') showTab();
       } catch (ex) { App.toast(ex.message, 'err'); }
@@ -247,20 +334,24 @@ function ArrModule(svc) {
         <label class="switch"><input type="checkbox" id="eMon" ${item.monitored ? 'checked' : ''}><i></i></label></div>
       <div class="frow"><label class="lbl">${t('Qualitätsprofil')}</label>
         <select class="sel" id="eProf">${st.profiles.map(p => `<option value="${p.id}" ${p.id === item.qualityProfileId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>
-      ${!isS ? `<div class="frow"><label class="lbl">${t('Mindest-Verfügbarkeit')}</label>
+      ${hasMetaProfile && st.metas && st.metas.length ? `<div class="frow"><label class="lbl">${t('Metadaten-Profil')}</label>
+        <select class="sel" id="eMeta">${st.metas.map(p => `<option value="${p.id}" ${p.id === item.metadataProfileId ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>` : ''}
+      ${K === 'movie' ? `<div class="frow"><label class="lbl">${t('Mindest-Verfügbarkeit')}</label>
         <select class="sel" id="eAvail">${['announced', 'inCinemas', 'released'].map(a => `<option value="${a}" ${item.minimumAvailability === a ? 'selected' : ''}>${a}</option>`).join('')}</select></div>` : ''}
-      ${isS ? `<div class="frow"><label class="lbl">${t('Staffel-Ordner')}</label>
+      ${K === 'series' ? `<div class="frow"><label class="lbl">${t('Staffel-Ordner')}</label>
         <label class="switch"><input type="checkbox" id="eSf" ${item.seasonFolder ? 'checked' : ''}><i></i></label></div>` : ''}
       <div class="frow"><label class="lbl">${t('Pfad')}</label><input class="inp" id="ePath" value="${esc(item.path || '')}"></div>
     </div>`);
     const bSave = h(`<button class="btn btn-p">${t('Speichern')}</button>`);
-    const m = App.modal({ title: tf('{0} bearbeiten', item.title), body, foot: [bSave] });
+    const m = App.modal({ title: tf('{0} bearbeiten', titleOf(item)), body, foot: [bSave] });
     bSave.addEventListener('click', async () => {
       item.monitored = body.querySelector('#eMon').checked;
       item.qualityProfileId = +body.querySelector('#eProf').value;
       item.path = body.querySelector('#ePath').value;
-      if (!isS) item.minimumAvailability = body.querySelector('#eAvail').value;
-      if (isS) item.seasonFolder = body.querySelector('#eSf').checked;
+      const meta = body.querySelector('#eMeta');
+      if (meta) item.metadataProfileId = +meta.value;
+      if (K === 'movie') item.minimumAvailability = body.querySelector('#eAvail').value;
+      if (K === 'series') item.seasonFolder = body.querySelector('#eSf').checked;
       try {
         await API.put(svc, P + ITEMS + '/' + item.id + '?moveFiles=false', item);
         App.toast(t('Gespeichert'), 'ok'); m.close();
@@ -270,10 +361,10 @@ function ArrModule(svc) {
   }
 
   /* ---------- Hinzufügen ---------- */
-  function renderAdd(body) {
+  function renderAdd(body, preset) {
     body.innerHTML = `
       <div class="toolrow">
-        <input class="inp grow search-lg" id="addQ" placeholder="${isS ? t('Serie suchen – Titel eingeben und Enter drücken…') : t('Film suchen – Titel eingeben und Enter drücken…')}">
+        <input class="inp grow search-lg" id="addQ" placeholder="${T.addPh}" value="${esc(preset || '')}">
         <button class="btn btn-p" id="addGo">${icon('search')} ${t('Suchen')}</button>
       </div>
       <div id="addRes"></div>`;
@@ -286,13 +377,12 @@ function ArrModule(svc) {
         const list = await API.get(svc, P + ITEMS + '/lookup?term=' + encodeURIComponent(q.value.trim()));
         res.innerHTML = `<div class="pgrid">${list.map((r, i) => {
           const src = r.remotePoster || ((r.images || []).find(x => x.coverType === 'poster') || {}).remoteUrl || '';
-          const exists = !!r.id;
-          return `<div class="poster" data-i="${i}" title="${esc(r.title)}">
-            <div class="p-fall">${esc(r.title)}</div>
+          return `<div class="poster" data-i="${i}" title="${esc(titleOf(r))}">
+            <div class="p-fall">${esc(titleOf(r))}</div>
             ${src ? `<img loading="lazy" src="${esc(src)}" onerror="this.remove()">` : ''}
-            <div class="p-tl">${exists ? `<span class="badge b-ok">${t('Vorhanden')}</span>` : ''}</div>
+            <div class="p-tl">${r.id ? `<span class="badge b-ok">${t('Vorhanden')}</span>` : ''}</div>
             <div class="p-grad"></div>
-            <div class="p-info"><b>${esc(r.title)}</b><span>${r.year || ''}</span></div>
+            <div class="p-info"><b>${esc(titleOf(r))}</b><span>${r.year || ''}</span></div>
           </div>`;
         }).join('') || emptyBox('search', t('Keine Ergebnisse'))}</div>`;
         on(res, 'click', '.poster', (e, el2) => {
@@ -305,28 +395,34 @@ function ArrModule(svc) {
     q.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
     body.querySelector('#addGo').addEventListener('click', go);
     q.focus();
+    if (preset) go();
   }
 
   async function addModal(r) {
     await ensureMeta();
     if (!st.roots.length) { App.toast(t('Kein Root-Ordner konfiguriert – zuerst unter Einstellungen anlegen'), 'err'); return; }
-    const monitorOpts = [['all', t('Alle Episoden')], ['future', t('Zukünftige')], ['missing', t('Fehlende')], ['existing', t('Vorhandene')], ['firstSeason', t('Erste Staffel')], ['latestSeason', t('Neueste Staffel')], ['none', t('Keine')]];
+    const seriesMon = [['all', t('Alle Episoden')], ['future', t('Zukünftige')], ['missing', t('Fehlende')], ['existing', t('Vorhandene')], ['firstSeason', t('Erste Staffel')], ['latestSeason', t('Neueste Staffel')], ['none', t('Keine')]];
+    const genericMon = [['all', t('Alle')], ['future', t('Zukünftige')], ['missing', t('Fehlende')], ['existing', t('Vorhandene')], ['first', t('Erste')], ['latest', t('Neueste')], ['none', t('Keine')]];
     const body = h(`<div>
       <div class="frow"><label class="lbl">${t('Root-Ordner')}</label>
         <select class="sel" id="aRoot">${st.roots.map(x => `<option value="${esc(x.path)}">${esc(x.path)} (${tf('{0} frei', fmtBytes(x.freeSpace))})</option>`).join('')}</select></div>
       <div class="frow"><label class="lbl">${t('Qualitätsprofil')}</label>
         <select class="sel" id="aProf">${st.profiles.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
-      ${isS ? `<div class="frow"><label class="lbl">${t('Überwacht')}</label>
-        <select class="sel" id="aMon">${monitorOpts.map(o => `<option value="${o[0]}">${o[1]}</option>`).join('')}</select></div>
+      ${hasMetaProfile && st.metas && st.metas.length ? `<div class="frow"><label class="lbl">${t('Metadaten-Profil')}</label>
+        <select class="sel" id="aMeta">${st.metas.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>` : ''}
+      ${K === 'series' ? `<div class="frow"><label class="lbl">${t('Überwachen')}</label>
+        <select class="sel" id="aMon">${seriesMon.map(o => `<option value="${o[0]}">${o[1]}</option>`).join('')}</select></div>
       <div class="frow"><label class="lbl">${t('Staffel-Ordner')}</label>
-        <label class="switch"><input type="checkbox" id="aSf" checked><i></i></label></div>`
-      : `<div class="frow"><label class="lbl">${t('Mindest-Verfügbarkeit')}</label>
-        <select class="sel" id="aAvail"><option value="announced">${t('Angekündigt')}</option><option value="inCinemas">${t('Im Kino')}</option><option value="released" selected>${t('Veröffentlicht')}</option></select></div>`}
+        <label class="switch"><input type="checkbox" id="aSf" checked><i></i></label></div>` : ''}
+      ${K === 'movie' ? `<div class="frow"><label class="lbl">${t('Mindest-Verfügbarkeit')}</label>
+        <select class="sel" id="aAvail"><option value="announced">${t('Angekündigt')}</option><option value="inCinemas">${t('Im Kino')}</option><option value="released" selected>${t('Veröffentlicht')}</option></select></div>` : ''}
+      ${K === 'artist' || K === 'author' ? `<div class="frow"><label class="lbl">${t('Überwachen')}</label>
+        <select class="sel" id="aMon">${genericMon.map(o => `<option value="${o[0]}">${o[1]}</option>`).join('')}</select></div>` : ''}
       <div class="frow"><label class="lbl">${t('Nach dem Hinzufügen suchen')}</label>
         <label class="switch"><input type="checkbox" id="aSearch" checked><i></i></label></div>
     </div>`);
     const bAdd = h(`<button class="btn btn-p">${icon('plus')} ${t('Hinzufügen')}</button>`);
-    const m = App.modal({ title: tf('{0} ({1}) hinzufügen', r.title, r.year || '?'), body, foot: [bAdd] });
+    const m = App.modal({ title: tf('{0} ({1}) hinzufügen', titleOf(r), r.year || '–'), body, foot: [bAdd] });
     bAdd.addEventListener('click', async () => {
       bAdd.disabled = true;
       const payload = Object.assign({}, r, {
@@ -334,19 +430,23 @@ function ArrModule(svc) {
         qualityProfileId: +body.querySelector('#aProf').value,
         monitored: true
       });
-      if (isS) {
+      const meta = body.querySelector('#aMeta');
+      if (meta) payload.metadataProfileId = +meta.value;
+      const search = body.querySelector('#aSearch').checked;
+      if (K === 'series') {
         payload.seasonFolder = body.querySelector('#aSf').checked;
-        payload.addOptions = {
-          monitor: body.querySelector('#aMon').value,
-          searchForMissingEpisodes: body.querySelector('#aSearch').checked
-        };
-      } else {
+        payload.addOptions = { monitor: body.querySelector('#aMon').value, searchForMissingEpisodes: search };
+      } else if (K === 'movie') {
         payload.minimumAvailability = body.querySelector('#aAvail').value;
-        payload.addOptions = { searchForMovie: body.querySelector('#aSearch').checked };
+        payload.addOptions = { searchForMovie: search };
+      } else if (K === 'artist') {
+        payload.addOptions = { monitor: body.querySelector('#aMon').value, searchForMissingAlbums: search };
+      } else {
+        payload.addOptions = { monitor: body.querySelector('#aMon').value, searchForMissingBooks: search };
       }
       try {
         await API.post(svc, P + ITEMS, payload);
-        App.toast(tf('{0} hinzugefügt', r.title), 'ok');
+        App.toast(tf('{0} hinzugefügt', titleOf(r)), 'ok');
         m.close();
       } catch (ex) { App.toast(ex.message, 'err'); bAdd.disabled = false; }
     });
@@ -356,21 +456,30 @@ function ArrModule(svc) {
   async function renderCal(body) {
     const start = new Date(); start.setDate(start.getDate() - 1); start.setHours(0, 0, 0, 0);
     const end = new Date(start.getTime() + 15 * 86400000);
+    const range = `start=${start.toISOString()}&end=${end.toISOString()}`;
     const items = [];
-    if (isS) {
-      const eps = await API.get(svc, `${P}/calendar?start=${start.toISOString()}&end=${end.toISOString()}&includeSeries=true`);
-      eps.forEach(e => items.push({
+    if (K === 'series') {
+      (await API.get(svc, `${P}/calendar?${range}&includeSeries=true`)).forEach(e => items.push({
         date: e.airDateUtc, has: e.hasFile,
         label: `${(e.series && e.series.title) || '?'} · S${String(e.seasonNumber).padStart(2, '0')}E${String(e.episodeNumber).padStart(2, '0')}`,
         sub: e.title || ''
       }));
-    } else {
-      const ms = await API.get(svc, `${P}/calendar?start=${start.toISOString()}&end=${end.toISOString()}`);
-      ms.forEach(mv => {
+    } else if (K === 'movie') {
+      (await API.get(svc, `${P}/calendar?${range}`)).forEach(mv => {
         [['Kino', mv.inCinemas], ['Digital', mv.digitalRelease], ['Disc', mv.physicalRelease]]
           .filter(x => x[1] && new Date(x[1]) >= start && new Date(x[1]) < end)
           .forEach(d => items.push({ date: d[1], has: mv.hasFile, label: `${mv.title} (${mv.year})`, sub: tf('{0}-Release', t(d[0])) }));
       });
+    } else if (K === 'artist') {
+      (await API.get(svc, `${P}/calendar?${range}&includeArtist=true`)).forEach(a => items.push({
+        date: a.releaseDate, has: null,
+        label: `${(a.artist && a.artist.artistName) || '?'} – ${a.title}`, sub: t('Album')
+      }));
+    } else {
+      (await API.get(svc, `${P}/calendar?${range}&includeAuthor=true`)).forEach(b => items.push({
+        date: b.releaseDate, has: null,
+        label: `${(b.author && b.author.authorName) || '?'} – ${b.title}`, sub: t('Buch')
+      }));
     }
     items.sort((a, b) => new Date(a.date) - new Date(b.date));
     let html = '', lastDay = '';
@@ -378,14 +487,14 @@ function ArrModule(svc) {
       const dl = dayLabel(it.date);
       if (dl !== lastDay) { html += `<div class="day-h">${icon('calendar')} ${dl}</div>`; lastDay = dl; }
       html += `<div class="list-item"><i class="dot" style="background:${M.color}"></i>
-        <div class="li-main"><b>${esc(it.label)}</b><span>${esc(it.sub)} · ${tf('{0} Uhr', timeHM(it.date))}</span></div>
-        ${it.has ? `<span class="badge b-ok">${t('Vorhanden')}</span>` : `<span class="badge b-mut">${t('Ausstehend')}</span>`}</div>`;
+        <div class="li-main"><b>${esc(it.label)}</b><span>${esc(it.sub)}</span></div>
+        ${it.has === true ? `<span class="badge b-ok">${t('Vorhanden')}</span>` : it.has === false ? `<span class="badge b-mut">${t('Ausstehend')}</span>` : ''}</div>`;
     });
     body.innerHTML = `<div class="card"><div class="card-h"><h3>${t('Kalender')}</h3><span class="sub">${t('gestern bis in 14 Tagen')}</span></div>
       <div class="card-b">${html || emptyBox('calendar', t('Keine Einträge im Zeitraum'))}</div></div>`;
   }
 
-  /* ---------- Aktivität (Queue + Historie) ---------- */
+  /* ---------- Aktivität ---------- */
   async function renderAct(body) {
     body.innerHTML = `<div class="card" id="qWrap"></div><div class="card" id="hWrap" style="margin-top:16px"></div>`;
     await drawQueue();
@@ -393,22 +502,27 @@ function ArrModule(svc) {
     App.every(6000, () => drawQueue(true));
   }
 
+  function queueTitle(r) {
+    if (K === 'series' && r.series) return `${r.series.title}${r.episode ? ` · S${String(r.episode.seasonNumber).padStart(2, '0')}E${String(r.episode.episodeNumber).padStart(2, '0')}` : ''}`;
+    if (K === 'movie' && r.movie) return `${r.movie.title} (${r.movie.year})`;
+    if (K === 'artist' && r.artist) return `${r.artist.artistName}${r.album ? ' – ' + r.album.title : ''}`;
+    if (K === 'author' && r.author) return `${r.author.authorName}${r.book ? ' – ' + r.book.title : ''}`;
+    return r.title || '?';
+  }
+
   async function drawQueue(soft) {
     const wrap = document.getElementById('qWrap');
     if (!wrap) return;
     try {
-      const inc = isS ? 'includeSeries=true&includeEpisode=true' : 'includeMovie=true';
+      const inc = { series: 'includeSeries=true&includeEpisode=true', movie: 'includeMovie=true', artist: 'includeArtist=true&includeAlbum=true', author: 'includeAuthor=true&includeBook=true' }[K];
       const q = await API.get(svc, `${P}/queue?page=1&pageSize=80&${inc}`);
       const rows = (q.records || []).map(r => {
-        let title = r.title || '?';
-        if (isS && r.series) title = `${r.series.title}${r.episode ? ` · S${String(r.episode.seasonNumber).padStart(2, '0')}E${String(r.episode.episodeNumber).padStart(2, '0')}` : ''}`;
-        if (!isS && r.movie) title = `${r.movie.title} (${r.movie.year})`;
         const pct = r.size ? Math.max(0, Math.round((1 - r.sizeleft / r.size) * 100)) : 0;
         const stBadge = r.trackedDownloadState === 'importPending' ? `<span class="badge b-warn">${t('Import wartet')}</span>`
           : r.status === 'downloading' ? `<span class="badge b-acc">${t('Lädt')}</span>`
           : `<span class="badge b-mut">${esc(r.status || '?')}</span>`;
         return `<tr>
-          <td><div class="td-main wrapline">${esc(title)}</div><div class="td-sub wrapline">${esc(r.title || '')}</div></td>
+          <td><div class="td-main wrapline">${esc(queueTitle(r))}</div><div class="td-sub wrapline">${esc(r.title || '')}</div></td>
           <td style="white-space:nowrap">${esc(r.quality && r.quality.quality && r.quality.quality.name || '')}</td>
           <td style="min-width:120px"><div class="prog"><i style="width:${pct}%"></i></div><div class="td-sub" style="margin-top:4px">${pct}% · ${esc(r.timeleft || '–')}</div></td>
           <td>${stBadge}</td>
@@ -457,31 +571,49 @@ function ArrModule(svc) {
 
   /* ---------- Fehlend ---------- */
   async function renderWanted(body) {
-    const path = isS
-      ? `${P}/wanted/missing?page=1&pageSize=40&sortKey=airDateUtc&sortDirection=descending&includeSeries=true`
-      : `${P}/wanted/missing?page=1&pageSize=40&sortKey=title&sortDirection=ascending`;
-    const w = await API.get(svc, path);
+    const paths = {
+      series: `${P}/wanted/missing?page=1&pageSize=40&sortKey=airDateUtc&sortDirection=descending&includeSeries=true`,
+      movie: `${P}/wanted/missing?page=1&pageSize=40&sortKey=title&sortDirection=ascending`,
+      artist: `${P}/wanted/missing?page=1&pageSize=40&includeArtist=true`,
+      author: `${P}/wanted/missing?page=1&pageSize=40&includeAuthor=true`
+    };
+    const w = await API.get(svc, paths[K]);
     const rows = (w.records || []).map(r => {
-      const label = isS
-        ? `${(r.series && r.series.title) || '?'} · S${String(r.seasonNumber).padStart(2, '0')}E${String(r.episodeNumber).padStart(2, '0')} – ${r.title || ''}`
-        : `${r.title} (${r.year || '?'})`;
-      const sub = isS ? (r.airDateUtc ? tf('Ausgestrahlt {0}', relTime(r.airDateUtc)) : '') : (r.status || '');
+      let label, sub = '';
+      if (K === 'series') {
+        label = `${(r.series && r.series.title) || '?'} · S${String(r.seasonNumber).padStart(2, '0')}E${String(r.episodeNumber).padStart(2, '0')} – ${r.title || ''}`;
+        sub = r.airDateUtc ? tf('Ausgestrahlt {0}', relTime(r.airDateUtc)) : '';
+      } else if (K === 'movie') {
+        label = `${r.title} (${r.year || '?'})`;
+        sub = r.status || '';
+      } else if (K === 'artist') {
+        label = `${(r.artist && r.artist.artistName) || '?'} – ${r.title}`;
+        sub = r.releaseDate ? relTime(r.releaseDate) : '';
+      } else {
+        label = `${(r.author && r.author.authorName) || '?'} – ${r.title}`;
+        sub = r.releaseDate ? relTime(r.releaseDate) : '';
+      }
       return `<div class="list-item">
         <div class="li-main"><b class="wrapline" style="white-space:normal">${esc(label)}</b><span>${esc(sub)}</span></div>
         <button class="btn btn-sm" data-ws="${r.id}">${icon('search')} ${t('Suchen')}</button>
       </div>`;
     }).join('');
     body.innerHTML = `<div class="card">
-      <div class="card-h"><h3>${tf('Fehlende {0}', T.many)}</h3><span class="sub">${tf('{0} gesamt', fmtNum(w.totalRecords || 0))}</span>
+      <div class="card-h"><h3>${tf('Fehlende {0}', K === 'artist' ? t('Alben') : K === 'author' ? t('Bücher') : T.many)}</h3><span class="sub">${tf('{0} gesamt', fmtNum(w.totalRecords || 0))}</span>
         <span class="spacer"></span>
         <button class="btn btn-sm btn-p" id="wAll">${icon('zap')} ${t('Alle suchen')}</button>
       </div>
       <div class="card-b" style="padding-top:6px">${rows || emptyBox('check', t('Nichts fehlt – alles da!'))}</div></div>`;
-    on(body, 'click', '[data-ws]', (e, el2) =>
-      cmd(isS ? 'EpisodeSearch' : 'MoviesSearch', isS ? { episodeIds: [+el2.dataset.ws] } : { movieIds: [+el2.dataset.ws] }, t('Suche gestartet')));
+    on(body, 'click', '[data-ws]', (e, el2) => {
+      const id = +el2.dataset.ws;
+      if (K === 'series') cmd('EpisodeSearch', { episodeIds: [id] });
+      else if (K === 'movie') cmd('MoviesSearch', { movieIds: [id] });
+      else if (K === 'artist') cmd('AlbumSearch', { albumIds: [id] });
+      else cmd('BookSearch', { bookIds: [id] });
+    });
     body.querySelector('#wAll').addEventListener('click', async () => {
       const r = await App.confirm({ title: t('Alle fehlenden suchen'), msg: t('Das kann viele Indexer-Anfragen auslösen. Fortfahren?'), okLabel: t('Suchen') });
-      if (r) cmd(T.missingCmd, {}, t('Suche nach allen fehlenden gestartet'));
+      if (r) cmd(MISSING_ALL, {}, t('Suche nach allen fehlenden gestartet'));
     });
   }
 
@@ -606,7 +738,6 @@ function ArrModule(svc) {
     });
   }
 
-  /* Indexer & Download-Clients (generisch über fields[]) */
   async function cfgProviders(el, path, label) {
     const list = await API.get(svc, P + path);
     el.innerHTML = `<div class="hint" style="margin-bottom:12px">${label === 'Indexer' ? t('Tipp: Indexer werden meist zentral über Prowlarr verwaltet und automatisch synchronisiert.') : ''}</div>` +
@@ -688,7 +819,6 @@ function ArrModule(svc) {
     });
   }
 
-  /* Naming / Medienverwaltung */
   async function cfgObj(el, path, title, labels) {
     const obj = await API.get(svc, P + path);
     const form = App.objForm(obj, labels);
@@ -704,7 +834,13 @@ function ArrModule(svc) {
     });
   }
 
-  return { render };
+  /* Für die globale Suche: Lookup-Ergebnis öffnen */
+  function openLookup(r) {
+    if (r.id) detailModal(r);
+    else addModal(r);
+  }
+
+  return { render, openLookup };
 }
 
 const _arrInstances = {};
@@ -714,3 +850,5 @@ function arrView(svc) {
 }
 Views.sonarr = { title: 'Sonarr', render: el => arrView('sonarr').render(el) };
 Views.radarr = { title: 'Radarr', render: el => arrView('radarr').render(el) };
+Views.lidarr = { title: 'Lidarr', render: el => arrView('lidarr').render(el) };
+Views.readarr = { title: 'Readarr', render: el => arrView('readarr').render(el) };

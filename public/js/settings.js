@@ -4,9 +4,16 @@ Views.settings = (() => {
   const HELP = {
     sonarr: 'API-Key: Sonarr → Settings → General → Security',
     radarr: 'API-Key: Radarr → Settings → General → Security',
+    lidarr: 'API-Key: Lidarr → Settings → General → Security',
+    readarr: 'API-Key: Readarr → Settings → General → Security',
     sabnzbd: 'API-Key: SABnzbd → Config → General → API Key',
     plex: 'Plex-Token: z. B. über XML-Ansicht eines Mediums (X-Plex-Token) oder Support-Artikel „Finding an authentication token"',
-    prowlarr: 'API-Key: Prowlarr → Settings → General → Security'
+    prowlarr: 'API-Key: Prowlarr → Settings → General → Security',
+    bazarr: 'API-Key: Bazarr → Settings → General → Security'
+  };
+  const PORTS = {
+    sonarr: 8989, radarr: 7878, lidarr: 8686, readarr: 8787,
+    sabnzbd: 8080, plex: 32400, prowlarr: 9696, bazarr: 6767
   };
 
   async function render(main) {
@@ -49,7 +56,7 @@ Views.settings = (() => {
           <label class="switch" title="${t('Aktiviert')}"><input type="checkbox" class="f-en" ${s.enabled ? 'checked' : ''}><i></i></label>
         </div>
         <div class="card-b">
-          <div class="frow"><label class="lbl">URL</label><input class="inp f-url" placeholder="http://192.168.1.10:8989" value="${esc(s.url || '')}"></div>
+          <div class="frow"><label class="lbl">URL</label><input class="inp f-url" placeholder="http://192.168.1.10:${PORTS[svc]}" value="${esc(s.url || '')}"></div>
           <div class="frow"><label class="lbl">${svc === 'plex' ? 'Plex-Token' : 'API-Key'}</label>
             <div style="display:flex;gap:8px">
               <input class="inp f-key" type="password" value="${esc(s.apiKey || '')}" autocomplete="off">
@@ -101,7 +108,11 @@ Views.settings = (() => {
         await API.panelPost('config', { services });
         S.cfg = await API.panelGet('config');
         App.toast(t('Dienste gespeichert'), 'ok');
+        /* Navigation neu aufbauen – nur aktive Dienste anzeigen */
+        App.renderShell();
+        App.route();
         App.statusCheck();
+        App.chipPoll();
       } catch (e) { App.toast(e.message, 'err'); }
     });
 

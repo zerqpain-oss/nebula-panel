@@ -207,6 +207,7 @@ Views.prowlarr = (() => {
     q.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
     body.querySelector('#sGo').addEventListener('click', go);
     q.focus();
+    if (st._auto && st.lastQuery) { st._auto = false; go(); }
   }
 
   /* ---------- Statistiken ---------- */
@@ -269,5 +270,11 @@ Views.prowlarr = (() => {
     });
   }
 
-  return { title: 'Prowlarr', render };
+  function preset(q) {
+    st.tab = 'search';
+    st.lastQuery = q;
+    st._auto = true;
+  }
+
+  return { title: 'Prowlarr', render, preset };
 })();

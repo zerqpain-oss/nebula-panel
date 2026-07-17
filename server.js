@@ -25,9 +25,12 @@ const DEFAULTS = {
   services: {
     sonarr:   { enabled: false, url: 'http://localhost:8989',  apiKey: '' },
     radarr:   { enabled: false, url: 'http://localhost:7878',  apiKey: '' },
+    lidarr:   { enabled: false, url: 'http://localhost:8686',  apiKey: '' },
+    readarr:  { enabled: false, url: 'http://localhost:8787',  apiKey: '' },
     sabnzbd:  { enabled: false, url: 'http://localhost:8080',  apiKey: '' },
     plex:     { enabled: false, url: 'http://localhost:32400', apiKey: '' },
-    prowlarr: { enabled: false, url: 'http://localhost:9696',  apiKey: '' }
+    prowlarr: { enabled: false, url: 'http://localhost:9696',  apiKey: '' },
+    bazarr:   { enabled: false, url: 'http://localhost:6767',  apiKey: '' }
   }
 };
 
@@ -159,7 +162,10 @@ function serveStatic(req, res, urlPath) {
 const SERVICE_DEFS = {
   sonarr:   { header: 'X-Api-Key' },
   radarr:   { header: 'X-Api-Key' },
+  lidarr:   { header: 'X-Api-Key' },
+  readarr:  { header: 'X-Api-Key' },
   prowlarr: { header: 'X-Api-Key' },
+  bazarr:   { header: 'X-API-KEY' },
   plex:     { header: 'X-Plex-Token' },
   sabnzbd:  { query: true }
 };
@@ -224,9 +230,13 @@ async function testService(type, url, apiKey) {
     const j = await (await get(url + '/api/v3/system/status', { 'X-Api-Key': apiKey, Accept: 'application/json' })).json();
     return `Verbunden – Version ${j.version}`;
   }
-  if (type === 'prowlarr') {
+  if (type === 'prowlarr' || type === 'lidarr' || type === 'readarr') {
     const j = await (await get(url + '/api/v1/system/status', { 'X-Api-Key': apiKey, Accept: 'application/json' })).json();
     return `Verbunden – Version ${j.version}`;
+  }
+  if (type === 'bazarr') {
+    const j = await (await get(url + '/api/system/status', { 'X-API-KEY': apiKey, Accept: 'application/json' })).json();
+    return `Verbunden – Version ${(j.data && j.data.bazarr_version) || 'unbekannt'}`;
   }
   if (type === 'sabnzbd') {
     const j = await (await get(url + '/api?mode=queue&limit=1&output=json&apikey=' + encodeURIComponent(apiKey))).json();
@@ -348,7 +358,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
 
-      const m = p.match(/^\/proxy\/(sonarr|radarr|sabnzbd|plex|prowlarr)(\/.*)?$/);
+      const m = p.match(/^\/proxy\/(sonarr|radarr|lidarr|readarr|sabnzbd|plex|prowlarr|bazarr)(\/.*)?$/);
       if (m) {
         const rest = (m[2] || '/') + (u.search || '');
         return proxy(req, res, m[1], rest);

@@ -4,7 +4,18 @@ Views.dashboard = {
   title: 'Dashboard',
 
   async render(main) {
+    const anyEnabled = SVCS.some(s => App.enabled(s));
+    if (!anyEnabled) {
+      main.innerHTML = `<div class="card"><div class="card-b empty">
+        ${icon('settings')}
+        <div style="margin-bottom:14px">${t('Keine Dienste aktiviert – füge deine Apps in den Einstellungen hinzu.')}</div>
+        <button class="btn btn-p" onclick="location.hash='#/settings'">${t('Zu den Einstellungen')}</button>
+      </div></div>`;
+      return;
+    }
+
     main.innerHTML = `
+      <div class="kpi-grid" id="kpiRow"></div>
       <div class="grid g-cards" id="svcCards"></div>
       <div class="grid g-side" style="margin-top:16px">
         <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
@@ -13,13 +24,14 @@ Views.dashboard = {
         </div>
         <div style="display:flex;flex-direction:column;gap:16px;min-width:0">
           <div class="card" id="plexCard"></div>
+          <div class="card" id="statsCard"></div>
           <div class="card" id="healthCard"></div>
           <div class="card" id="diskCard"></div>
         </div>
       </div>
       <div class="card" id="recentCard" style="margin-top:16px"></div>`;
 
-    Views.dashboard.svcCards();
+    Views.dashboard.loadCore();
     Views.dashboard.sabCard();
     Views.dashboard.plexCard();
     Views.dashboard.calCard();
@@ -28,65 +40,111 @@ Views.dashboard = {
     Views.dashboard.recentCard();
 
     App.every(6000, () => { Views.dashboard.sabCard(true); Views.dashboard.plexCard(true); });
-    App.every(30000, () => Views.dashboard.svcCards());
+    App.every(45000, () => Views.dashboard.loadCore());
   },
 
-  enabled(svc) {
-    const c = S.cfg.services[svc];
-    return c && c.enabled && c.url && c.apiKey;
+  enabled(svc) { return App.enabled(svc); },
+
+  /* ---------- Kern-Daten: KPIs + Dienstkarten + Statistiken ---------- */
+  async loadCore() {
+    const d = { series: null, movies: null, artists: null, authors: null, sabStats: null, sabQ: null, sessions: null, idxStats: null, badges: null };
+    const jobs = [];
+    if (this.enabled('sonarr')) jobs.push(API.get('sonarr', '/api/v3/series').then(x => d.series = x).catch(() => {}));
+    if (this.enabled('radarr')) jobs.push(API.get('radarr', '/api/v3/movie').then(x => d.movies = x).catch(() => {}));
+    if (this.enabled('lidarr')) jobs.push(API.get('lidarr', '/api/v1/artist').then(x => d.artists = x).catch(() => {}));
+    if (this.enabled('readarr')) jobs.push(API.get('readarr', '/api/v1/author').then(x => d.authors = x).catch(() => {}));
+    if (this.enabled('sabnzbd')) {
+      jobs.push(API.sab('mode=server_stats').then(x => d.sabStats = x).catch(() => {}));
+      jobs.push(API.sab('mode=queue&start=0&limit=1').then(x => d.sabQ = x.queue).catch(() => {}));
+    }
+    if (this.enabled('plex')) jobs.push(API.get('plex', '/status/sessions').then(x => d.sessions = (x.MediaContainer && x.MediaContainer.Metadata) || []).catch(() => {}));
+    if (this.enabled('prowlarr')) jobs.push(API.get('prowlarr', '/api/v1/indexerstats').then(x => d.idxStats = x).catch(() => {}));
+    if (this.enabled('bazarr')) jobs.push(API.get('bazarr', '/api/badges').then(x => d.badges = x).catch(() => {}));
+    await Promise.allSettled(jobs);
+    this.kpiRow(d);
+    this.svcCards(d);
+    this.statsCard(d);
   },
 
-  /* ---------- Dienst-Karten ---------- */
-  async svcCards() {
+  sizeSum(list) {
+    return (list || []).reduce((a, i) => a + ((i.statistics && i.statistics.sizeOnDisk) || i.sizeOnDisk || 0), 0);
+  },
+
+  kpiRow(d) {
+    const el = document.getElementById('kpiRow');
+    if (!el) return;
+    const totalSize = this.sizeSum(d.series) + this.sizeSum(d.movies) + this.sizeSum(d.artists) + this.sizeSum(d.authors);
+    const counts = [];
+    if (d.series) counts.push(`${fmtNum(d.series.length)} ${t('Serien')}`);
+    if (d.movies) counts.push(`${fmtNum(d.movies.length)} ${t('Filme')}`);
+    if (d.artists) counts.push(`${fmtNum(d.artists.length)} ${t('Künstler')}`);
+    if (d.authors) counts.push(`${fmtNum(d.authors.length)} ${t('Autoren')}`);
+    const totalItems = (d.series || []).length + (d.movies || []).length + (d.artists || []).length + (d.authors || []).length;
+    const tiles = [];
+    if (totalSize > 0) tiles.push([icon('disk', 'k-ico'), fmtBytes(totalSize), t('Mediathek gesamt')]);
+    if (totalItems > 0) tiles.push([icon('grid', 'k-ico'), fmtNum(totalItems), counts.join(' · ') || t('Titel gesamt')]);
+    if (d.sabQ) tiles.push([icon('download', 'k-ico'),
+      d.sabQ.paused ? t('Pausiert') : fmtBytes((Number(d.sabQ.kbpersec) || 0) * 1024) + '/s',
+      tf('{0} Jobs', fmtNum(d.sabQ.noofslots || 0))]);
+    if (d.sabStats) tiles.push([icon('zap', 'k-ico'), fmtBytes(d.sabStats.day || 0), t('Heute geladen')]);
+    if (d.sessions) tiles.push([icon('play', 'k-ico'), fmtNum(d.sessions.length), t('Aktive Streams')]);
+    el.innerHTML = tiles.map(x => `<div class="kpi">${x[0]}<b>${x[1]}</b><span>${x[2]}</span></div>`).join('');
+  },
+
+  /* ---------- Dienst-Karten (nur aktivierte) ---------- */
+  async svcCards(d) {
     const el = document.getElementById('svcCards');
     if (!el) return;
+    const active = SVCS.filter(s => this.enabled(s));
 
     const stats = {};
     const jobs = [];
     if (this.enabled('sonarr')) jobs.push((async () => {
-      const [series, missing, queue] = await Promise.all([
-        API.get('sonarr', '/api/v3/series'),
+      const [missing, queue] = await Promise.all([
         API.get('sonarr', '/api/v3/wanted/missing?page=1&pageSize=1'),
         API.get('sonarr', '/api/v3/queue?page=1&pageSize=1')
       ]);
-      stats.sonarr = `<b>${fmtNum(series.length)}</b> ${t('Serien')} · <b>${fmtNum(missing.totalRecords)}</b> ${t('fehlend')} · <b>${fmtNum(queue.totalRecords)}</b> ${t('in Queue')}`;
+      stats.sonarr = `<b>${fmtNum((d.series || []).length)}</b> ${t('Serien')} · <b>${fmtNum(missing.totalRecords)}</b> ${t('fehlend')} · <b>${fmtNum(queue.totalRecords)}</b> ${t('in Queue')}`;
     })().catch(() => {}));
     if (this.enabled('radarr')) jobs.push((async () => {
-      const [movies, missing, queue] = await Promise.all([
-        API.get('radarr', '/api/v3/movie'),
+      const [missing, queue] = await Promise.all([
         API.get('radarr', '/api/v3/wanted/missing?page=1&pageSize=1'),
         API.get('radarr', '/api/v3/queue?page=1&pageSize=1')
       ]);
-      stats.radarr = `<b>${fmtNum(movies.length)}</b> ${t('Filme')} · <b>${fmtNum(missing.totalRecords)}</b> ${t('fehlend')} · <b>${fmtNum(queue.totalRecords)}</b> ${t('in Queue')}`;
+      stats.radarr = `<b>${fmtNum((d.movies || []).length)}</b> ${t('Filme')} · <b>${fmtNum(missing.totalRecords)}</b> ${t('fehlend')} · <b>${fmtNum(queue.totalRecords)}</b> ${t('in Queue')}`;
     })().catch(() => {}));
-    if (this.enabled('sabnzbd')) jobs.push((async () => {
-      const q = (await API.sab('mode=queue&start=0&limit=1')).queue;
+    if (this.enabled('lidarr')) jobs.push((async () => {
+      const albums = (d.artists || []).reduce((a, x) => a + ((x.statistics && x.statistics.albumCount) || 0), 0);
+      stats.lidarr = `<b>${fmtNum((d.artists || []).length)}</b> ${t('Künstler')} · <b>${fmtNum(albums)}</b> ${t('Alben')} · ${fmtBytes(this.sizeSum(d.artists))}`;
+    })().catch(() => {}));
+    if (this.enabled('readarr')) jobs.push((async () => {
+      const books = (d.authors || []).reduce((a, x) => a + ((x.statistics && x.statistics.bookCount) || 0), 0);
+      stats.readarr = `<b>${fmtNum((d.authors || []).length)}</b> ${t('Autoren')} · <b>${fmtNum(books)}</b> ${t('Bücher')}`;
+    })().catch(() => {}));
+    if (this.enabled('sabnzbd') && d.sabQ) {
+      const q = d.sabQ;
       stats.sabnzbd = q.paused
         ? `<span style="color:var(--warn)">${t('Pausiert')}</span> · <b>${esc(q.sizeleft)}</b> ${t('übrig')}`
         : `<b>${fmtBytes((Number(q.kbpersec) || 0) * 1024)}/s</b> · <b>${fmtNum(q.noofslots)}</b> ${t('Jobs')} · ${esc(q.sizeleft)} ${t('übrig')}`;
-    })().catch(() => {}));
+    }
     if (this.enabled('plex')) jobs.push((async () => {
-      const [sess, libs] = await Promise.all([
-        API.get('plex', '/status/sessions'),
-        API.get('plex', '/library/sections')
-      ]);
-      const n = (sess.MediaContainer && sess.MediaContainer.size) || 0;
+      const libs = await API.get('plex', '/library/sections');
       const l = (libs.MediaContainer && libs.MediaContainer.size) || 0;
-      stats.plex = tf('{0} aktive Streams · {1} Bibliotheken', `<b>${n}</b>`, `<b>${l}</b>`);
+      stats.plex = tf('{0} aktive Streams · {1} Bibliotheken', `<b>${(d.sessions || []).length}</b>`, `<b>${l}</b>`);
     })().catch(() => {}));
     if (this.enabled('prowlarr')) jobs.push((async () => {
       const idx = await API.get('prowlarr', '/api/v1/indexer');
-      const on = idx.filter(i => i.enable).length;
-      stats.prowlarr = tf('{0} von {1} Indexern aktiv', `<b>${on}</b>`, `<b>${idx.length}</b>`);
+      stats.prowlarr = tf('{0} von {1} Indexern aktiv', `<b>${idx.filter(i => i.enable).length}</b>`, `<b>${idx.length}</b>`);
     })().catch(() => {}));
+    if (this.enabled('bazarr') && d.badges) {
+      stats.bazarr = tf('{0} fehlende Untertitel', `<b>${fmtNum((d.badges.episodes || 0) + (d.badges.movies || 0))}</b>`);
+    }
     await Promise.allSettled(jobs);
 
-    el.innerHTML = SVCS.map(svc => {
+    el.innerHTML = active.map(svc => {
       const m = SVC_META[svc];
       const st = S.status[svc] || {};
-      const enabled = this.enabled(svc);
-      const badge = !enabled ? `<span class="badge b-mut">${t('Inaktiv')}</span>`
-        : st.state === 'on' ? `<span class="badge b-ok">Online</span>`
+      const badge = st.state === 'on' ? `<span class="badge b-ok">Online</span>`
         : st.state === 'off' ? '<span class="badge b-err">Offline</span>'
         : '<span class="badge b-mut">…</span>';
       return `<div class="card clickable" onclick="location.hash='#/${svc}'">
@@ -97,18 +155,60 @@ Views.dashboard = {
               <b style="font-size:15px">${m.name}</b>${badge}
             </div>
             <div class="td-sub" style="margin-top:2px">${st.version ? 'v' + esc(st.version) : t(m.desc)}</div>
-            <div style="margin-top:9px;font-size:12.5px;color:var(--txt2)">${stats[svc] || (enabled ? '–' : t('Nicht konfiguriert'))}</div>
+            <div style="margin-top:9px;font-size:12.5px;color:var(--txt2)">${stats[svc] || '–'}</div>
           </div>
-          ${enabled ? `<button class="btn btn-ic btn-g" title="${t('Original-UI öffnen')}" onclick="event.stopPropagation();App.openSvc('${svc}')">${icon('external')}</button>` : ''}
+          <button class="btn btn-ic btn-g" title="${t('Original-UI öffnen')}" onclick="event.stopPropagation();App.openSvc('${svc}')">${icon('external')}</button>
         </div></div>`;
     }).join('');
+  },
+
+  /* ---------- Statistik-Karte (Genres & Zahlen) ---------- */
+  statsCard(d) {
+    const el = document.getElementById('statsCard');
+    if (!el) return;
+    /* Top-Genres über alle Bibliotheken */
+    const genres = new Map();
+    [d.series, d.movies, d.artists].forEach(list => (list || []).forEach(i =>
+      (i.genres || []).forEach(g => genres.set(g, (genres.get(g) || 0) + 1))));
+    const top = [...genres.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+    const maxG = top.length ? top[0][1] : 1;
+    const genreHtml = top.map(([g, n]) => `
+      <div class="hbar">
+        <span style="flex:0 0 110px;font-size:12.5px;color:var(--txt2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(g)}">${esc(g)}</span>
+        <div class="prog" style="flex:1"><i style="width:${Math.round(n / maxG * 100)}%"></i></div>
+        <span class="td-sub" style="flex:0 0 34px;text-align:right">${fmtNum(n)}</span>
+      </div>`).join('');
+
+    const kvs = [];
+    if (d.idxStats && Array.isArray(d.idxStats.indexers)) {
+      const grabs = d.idxStats.indexers.reduce((a, x) => a + (x.numberOfGrabs || 0), 0);
+      const queries = d.idxStats.indexers.reduce((a, x) => a + (x.numberOfQueries || 0), 0);
+      kvs.push([t('Prowlarr-Grabs'), fmtNum(grabs)]);
+      kvs.push([t('Indexer-Anfragen'), fmtNum(queries)]);
+    }
+    if (d.sabStats) {
+      kvs.push([t('Diesen Monat geladen'), fmtBytes(d.sabStats.month || 0)]);
+      kvs.push([t('Insgesamt geladen'), fmtBytes(d.sabStats.total || 0)]);
+    }
+    if (d.badges) {
+      kvs.push([t('Fehlende Untertitel'), fmtNum((d.badges.episodes || 0) + (d.badges.movies || 0))]);
+    }
+
+    if (!top.length && !kvs.length) { el.style.display = 'none'; return; }
+    el.style.display = '';
+    el.innerHTML = `<div class="card-h"><h3>${t('Statistiken')}</h3></div>
+      <div class="card-b">
+        ${top.length ? `<div class="stat-lbl" style="margin-bottom:8px">${t('Top-Genres')}</div>${genreHtml}` : ''}
+        ${kvs.length ? `<div style="margin-top:${top.length ? '14px' : '0'}">${kvs.map(k =>
+          `<div class="kv"><span>${esc(k[0])}</span><b>${esc(k[1])}</b></div>`).join('')}</div>` : ''}
+      </div>`;
   },
 
   /* ---------- SABnzbd Live ---------- */
   async sabCard(soft) {
     const el = document.getElementById('sabCard');
     if (!el) return;
-    if (!this.enabled('sabnzbd')) { el.innerHTML = `<div class="card-h"><h3>${t('Downloads')}</h3></div><div class="card-b">${emptyBox('download', t('SABnzbd nicht konfiguriert'))}</div>`; return; }
+    if (!this.enabled('sabnzbd')) { el.style.display = 'none'; return; }
     try {
       const q = (await API.sab('mode=queue&start=0&limit=6')).queue;
       S.sab = q;
@@ -155,7 +255,7 @@ Views.dashboard = {
   async plexCard(soft) {
     const el = document.getElementById('plexCard');
     if (!el) return;
-    if (!this.enabled('plex')) { el.innerHTML = `<div class="card-h"><h3>${t('Gerade läuft')}</h3></div><div class="card-b">${emptyBox('play', t('Plex nicht konfiguriert'))}</div>`; return; }
+    if (!this.enabled('plex')) { el.style.display = 'none'; return; }
     try {
       const j = await API.get('plex', '/status/sessions');
       const sess = (j.MediaContainer && j.MediaContainer.Metadata) || [];
@@ -181,28 +281,38 @@ Views.dashboard = {
     }
   },
 
-  /* ---------- Kalender (Sonarr + Radarr) ---------- */
+  /* ---------- Kalender (alle Bibliotheks-Dienste) ---------- */
   async calCard() {
     const el = document.getElementById('calCard');
     if (!el) return;
     el.innerHTML = `<div class="card-h"><h3>${t('Demnächst')}</h3><span class="sub">${t('nächste 7 Tage')}</span></div><div class="card-b">${spinner()}</div>`;
     const start = new Date(); start.setHours(0, 0, 0, 0);
     const end = new Date(start.getTime() + 8 * 86400000);
-    const iso = d => d.toISOString();
+    const range = `start=${start.toISOString()}&end=${end.toISOString()}`;
     const items = [];
     const jobs = [];
-    if (this.enabled('sonarr')) jobs.push(API.get('sonarr', `/api/v3/calendar?start=${iso(start)}&end=${iso(end)}&includeSeries=true`)
+    if (this.enabled('sonarr')) jobs.push(API.get('sonarr', `/api/v3/calendar?${range}&includeSeries=true`)
       .then(eps => eps.forEach(e => items.push({
         date: e.airDateUtc, svc: 'sonarr', has: e.hasFile,
         label: `${(e.series && e.series.title) || '?'} · S${String(e.seasonNumber).padStart(2, '0')}E${String(e.episodeNumber).padStart(2, '0')}`,
         sub: e.title || ''
       }))).catch(() => {}));
-    if (this.enabled('radarr')) jobs.push(API.get('radarr', `/api/v3/calendar?start=${iso(start)}&end=${iso(end)}`)
+    if (this.enabled('radarr')) jobs.push(API.get('radarr', `/api/v3/calendar?${range}`)
       .then(ms => ms.forEach(m => {
-        const dates = [['Kino', m.inCinemas], ['Digital', m.digitalRelease], ['Disc', m.physicalRelease]]
-          .filter(x => x[1] && new Date(x[1]) >= start && new Date(x[1]) < end);
-        dates.forEach(d => items.push({ date: d[1], svc: 'radarr', has: m.hasFile, label: `${m.title} (${m.year})`, sub: tf('{0}-Release', t(d[0])) }));
+        [['Kino', m.inCinemas], ['Digital', m.digitalRelease], ['Disc', m.physicalRelease]]
+          .filter(x => x[1] && new Date(x[1]) >= start && new Date(x[1]) < end)
+          .forEach(dd => items.push({ date: dd[1], svc: 'radarr', has: m.hasFile, label: `${m.title} (${m.year})`, sub: tf('{0}-Release', t(dd[0])) }));
       })).catch(() => {}));
+    if (this.enabled('lidarr')) jobs.push(API.get('lidarr', `/api/v1/calendar?${range}&includeArtist=true`)
+      .then(as => as.forEach(a => items.push({
+        date: a.releaseDate, svc: 'lidarr', has: null,
+        label: `${(a.artist && a.artist.artistName) || '?'} – ${a.title}`, sub: t('Album')
+      }))).catch(() => {}));
+    if (this.enabled('readarr')) jobs.push(API.get('readarr', `/api/v1/calendar?${range}&includeAuthor=true`)
+      .then(bs => bs.forEach(b => items.push({
+        date: b.releaseDate, svc: 'readarr', has: null,
+        label: `${(b.author && b.author.authorName) || '?'} – ${b.title}`, sub: t('Buch')
+      }))).catch(() => {}));
     await Promise.allSettled(jobs);
     items.sort((a, b) => new Date(a.date) - new Date(b.date));
 
@@ -212,8 +322,8 @@ Views.dashboard = {
       if (dl !== lastDay) { html += `<div class="day-h">${icon('calendar')} ${dl}</div>`; lastDay = dl; }
       html += `<div class="list-item" style="padding:7px 4px">
         <i class="dot" style="background:${SVC_META[it.svc].color}"></i>
-        <div class="li-main"><b>${esc(it.label)}</b><span>${esc(it.sub)} · ${tf('{0} Uhr', timeHM(it.date))}</span></div>
-        ${it.has ? `<span class="badge b-ok">${t('Vorhanden')}</span>` : ''}
+        <div class="li-main"><b>${esc(it.label)}</b><span>${esc(it.sub)}</span></div>
+        ${it.has === true ? `<span class="badge b-ok">${t('Vorhanden')}</span>` : ''}
       </div>`;
     });
     el.innerHTML = `<div class="card-h"><h3>${t('Demnächst')}</h3><span class="sub">${t('nächste 7 Tage')}</span></div>
@@ -230,6 +340,8 @@ Views.dashboard = {
       issues.push({ svc, type: x.type, msg: x.message }))).catch(() => {});
     if (this.enabled('sonarr')) jobs.push(pull('sonarr', '/api/v3/health'));
     if (this.enabled('radarr')) jobs.push(pull('radarr', '/api/v3/health'));
+    if (this.enabled('lidarr')) jobs.push(pull('lidarr', '/api/v1/health'));
+    if (this.enabled('readarr')) jobs.push(pull('readarr', '/api/v1/health'));
     if (this.enabled('prowlarr')) jobs.push(pull('prowlarr', '/api/v1/health'));
     await Promise.allSettled(jobs);
     const rows = issues.map(i => `<div class="list-item" style="padding:8px 4px">
@@ -246,9 +358,11 @@ Views.dashboard = {
     if (!el) return;
     const disks = new Map();
     const jobs = [];
-    const pull = svc => API.get(svc, '/api/v3/diskspace').then(a => a.forEach(d => disks.set(d.path, d))).catch(() => {});
-    if (this.enabled('sonarr')) jobs.push(pull('sonarr'));
-    if (this.enabled('radarr')) jobs.push(pull('radarr'));
+    const pull = (svc, api) => API.get(svc, api + '/diskspace').then(a => a.forEach(d => disks.set(d.path, d))).catch(() => {});
+    if (this.enabled('sonarr')) jobs.push(pull('sonarr', '/api/v3'));
+    if (this.enabled('radarr')) jobs.push(pull('radarr', '/api/v3'));
+    if (this.enabled('lidarr')) jobs.push(pull('lidarr', '/api/v1'));
+    if (this.enabled('readarr')) jobs.push(pull('readarr', '/api/v1'));
     await Promise.allSettled(jobs);
     const rows = [...disks.values()].filter(d => d.totalSpace > 0).map(d => {
       const used = d.totalSpace - d.freeSpace;
@@ -260,8 +374,9 @@ Views.dashboard = {
         <div class="prog ${pct > 92 ? '' : pct > 80 ? 'p-warn' : 'p-ok'}"><i style="width:${pct}%"></i></div>
       </div>`;
     }).join('');
+    if (!rows) { el.style.display = 'none'; return; }
     el.innerHTML = `<div class="card-h"><h3>${t('Speicherplatz')}</h3></div>
-      <div class="card-b" style="padding-top:8px">${rows || emptyBox('disk', t('Keine Daten (Sonarr/Radarr nötig)'))}</div>`;
+      <div class="card-b" style="padding-top:8px">${rows}</div>`;
   },
 
   /* ---------- Kürzlich hinzugefügt (Plex) ---------- */

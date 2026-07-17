@@ -7,9 +7,12 @@ const S = { cfg: null, status: {}, name: 'Nebula', speedHist: [], sab: null, ple
 const SVC_META = {
   sonarr:   { name: 'Sonarr',   icon: 'tv',       color: 'var(--sonarr)',   desc: 'Serien' },
   radarr:   { name: 'Radarr',   icon: 'film',     color: 'var(--radarr)',   desc: 'Filme' },
+  lidarr:   { name: 'Lidarr',   icon: 'music',    color: 'var(--lidarr)',   desc: 'Musik' },
+  readarr:  { name: 'Readarr',  icon: 'book',     color: 'var(--readarr)',  desc: 'Bücher' },
   sabnzbd:  { name: 'SABnzbd',  icon: 'download', color: 'var(--sabnzbd)',  desc: 'Downloads' },
   plex:     { name: 'Plex',     icon: 'play',     color: 'var(--plex)',     desc: 'Streaming' },
-  prowlarr: { name: 'Prowlarr', icon: 'search',   color: 'var(--prowlarr)', desc: 'Indexer' }
+  prowlarr: { name: 'Prowlarr', icon: 'search',   color: 'var(--prowlarr)', desc: 'Indexer' },
+  bazarr:   { name: 'Bazarr',   icon: 'captions', color: 'var(--bazarr)',   desc: 'Untertitel' }
 };
 const SVCS = Object.keys(SVC_META);
 
@@ -50,7 +53,10 @@ const ICONS = {
   inbox: 'M22 12h-6l-2 3h-4l-2-3H2M5.5 5h13l3.5 7v5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-5z',
   eye: 'M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7zM12 12m-3 0a3 3 0 1 0 6 0 3 3 0 1 0-6 0',
   link: 'M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7',
-  info: 'M12 12m-9 0a9 9 0 1 0 18 0 9 9 0 1 0-18 0M12 8h.01M12 12v4'
+  info: 'M12 12m-9 0a9 9 0 1 0 18 0 9 9 0 1 0-18 0M12 8h.01M12 12v4',
+  music: 'M9 18V5l12-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM21 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
+  book: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5z',
+  captions: 'M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zM6 11h4M6 15h8M13 11h5M17 15h1'
 };
 function icon(n, cls) {
   return `<svg class="${cls || ''}" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;vertical-align:-2px"><path d="${ICONS[n] || ''}"/></svg>`;
@@ -192,9 +198,15 @@ const App = {
     App.everyGlobal(8000, () => App.chipPoll());
   },
 
+  enabled(svc) {
+    const c = S.cfg && S.cfg.services[svc];
+    return !!(c && c.enabled && c.url && c.apiKey);
+  },
+
   renderShell() {
     const app = document.getElementById('app');
-    const navSvc = SVCS.map(k => {
+    const active = SVCS.filter(k => App.enabled(k));
+    const navSvc = active.map(k => {
       const m = SVC_META[k];
       return `<div class="nav-item" data-nav="${k}" style="--c:${m.color}">${icon(m.icon)}<span>${m.name}</span><i class="dot" id="dot-${k}"></i></div>`;
     }).join('');
@@ -204,7 +216,7 @@ const App = {
           <div class="logo"><div class="logo-orb"></div><div class="logo-txt"><b>${esc(S.name)}</b><span>Media Control</span></div></div>
           <nav id="nav">
             <div class="nav-item" data-nav="dashboard">${icon('grid')}<span>Dashboard</span></div>
-            <div class="nav-sep">${t('Dienste')}</div>
+            ${active.length ? `<div class="nav-sep">${t('Dienste')}</div>` : ''}
             ${navSvc}
             <div class="nav-sep">${t('System')}</div>
             <div class="nav-item" data-nav="settings">${icon('settings')}<span>${t('Einstellungen')}</span></div>
@@ -216,6 +228,7 @@ const App = {
         <div class="mainwrap">
           <header class="topbar">
             <h1 id="pageTitle"></h1>
+            <input class="inp top-search" id="globalSearch" placeholder="${t('Überall suchen…')}">
             <div class="top-chips" id="topChips"></div>
           </header>
           <main id="main"></main>
@@ -225,6 +238,14 @@ const App = {
     document.getElementById('btnLogout').addEventListener('click', async () => {
       try { await API.panelPost('logout', {}); } catch (e) {}
       App.authScreen(false);
+    });
+    document.getElementById('globalSearch').addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      const q = e.target.value.trim();
+      if (!q) return;
+      Views.search.setQuery(q);
+      if (location.hash === '#/search') App.route();
+      else location.hash = '#/search';
     });
   },
 
@@ -263,7 +284,11 @@ const App = {
       try {
         let version = '';
         if (svc === 'sonarr' || svc === 'radarr') version = (await API.get(svc, '/api/v3/system/status')).version;
-        else if (svc === 'prowlarr') version = (await API.get(svc, '/api/v1/system/status')).version;
+        else if (svc === 'prowlarr' || svc === 'lidarr' || svc === 'readarr') version = (await API.get(svc, '/api/v1/system/status')).version;
+        else if (svc === 'bazarr') {
+          const j = await API.get('bazarr', '/api/system/status');
+          version = (j.data && j.data.bazarr_version) || '';
+        }
         else if (svc === 'sabnzbd') version = (await API.sab('mode=version')).version;
         else if (svc === 'plex') {
           const j = await API.get('plex', '/identity');
